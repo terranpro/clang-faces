@@ -11,17 +11,12 @@ ENABLE_TESTING()
 find_package(LLVM REQUIRED)
 find_package(Clang REQUIRED)
 
+message(STATUS "LLVM LDFLAGS = ${LLVM_MODULE_LIBS}")
 
 FILE( GLOB_RECURSE ALL_SRC "${CMAKE_SOURCE_DIR}/*.cpp" )
 string(REGEX REPLACE ".*/CMakeFiles/[^;]+;?" "" ALL_SRC "${ALL_SRC}")
 
 message(STATUS "Source files found: ${ALL_SRC}")
-
-add_executable( 
-${PROJECT_NAME}
-
-${ALL_SRC}
-)
 
 include_directories(
 ${PROJECT_SOURCE_DIR}/include
@@ -29,13 +24,24 @@ ${LLVM_INCLUDE_DIRS}
 ${CLANG_INCLUDE_DIRS}
 )
 
+message(STATUS "LLVM LIB DIR: ${LLVM_LIBRARY_DIRS}")
+
 link_directories( 
 ${LLVM_LIBRARY_DIRS}
 #${CLANG_LIBRARY_DIRS}
 )
 
+add_executable( 
+${PROJECT_NAME}
+
+${ALL_SRC}
+)
+
 target_link_libraries( ${PROJECT_NAME} 
+-Wl,--start-group
+${LLVM_LIBNAMES}
 ${CLANG_LIBS} 
+-Wl,--end-group
 )
 
 add_definitions(
