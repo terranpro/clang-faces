@@ -38,6 +38,8 @@
 (defvar clang-faces-fontification-data nil)
 (defvar clang-faces-fontification-data-incoming nil)
 
+(defvar clang-faces-parsed-data nil)
+
 (defvar clang-faces-status 'idle
   "Marking whether busy or idle.")
 
@@ -73,6 +75,13 @@
 (set-face-attribute 'clang-faces-function-name-face nil 
 		    :inherit font-lock-function-name-face)
 
+(defface clang-faces-namespace-face
+  '((t :inherit warning))
+  "")
+(set-face-attribute 'clang-faces-namespace-face nil 
+		    :inherit font-lock-type-face
+		    :bold t)
+
 (defvar clang-faces-type-face-alist nil)
 (setq clang-faces-type-face-alist
       '(("Punctuation" . default)
@@ -81,7 +90,8 @@
 	("Literal" . clang-faces-literal-face)
 	("Comment" . clang-faces-comment-face)
 	("Keyword" . clang-faces-keyword-face)
-	("Function" . clang-faces-function-name-face)))
+	("Function" . clang-faces-function-name-face)
+	("Namespace" . clang-faces-namespace-face)))
 
 (defvar clang-faces-output-regex nil)
 (setq clang-faces-output-regex
@@ -98,17 +108,17 @@
   (let ((type-face (or (cdr (assoc type clang-faces-type-face-alist))
 		       'default)))
     (put-text-property start end 'font-lock-face type-face buf)
-;    (put-text-property start end 'fontified t buf)
+;    (put-text-property start end 'fontified nil buf)
     ))
 
 (defvar clang-faces-fontify-region-queue nil)
 
-(defun clang-faces-fontify-region-worker (start end buf)
+(defun clang-faces-fontify-region-worker (start end buf &optional hardstoppt)
   (message (format "Fontifying in %s" buf))
   (with-silent-modifications
     (mapcar
      #'(lambda (e)
-	 ;(message (format "Element: %d %d" (car e) (cadr e)))
+	 (message (format "Element: %d %d %s" (car e) (cadr e) (caddr e)))
 	 (clang-faces-color-region buf
 				   (caddr e)
 				   (car e)
@@ -116,7 +126,7 @@
      (loop for elem in clang-faces-parsed-data
 	   for s = (car elem)
 	   for e = (cadr elem)
-	   with max = (1+ (buffer-size buf))
+	   with max = (or hardstoppt (1+ (buffer-size buf)))
 	   with win-end = (window-end (get-buffer-window buf))
 	   if (and (>= s start) (<= s end) (<= s max) (<= e max))
 	   ;;if (and (>= s start) (<= s win-end))
@@ -125,12 +135,17 @@
 (defun clang-faces-fontify-queue ()
   (unwind-protect
       (mapcar #'(lambda (e) 
+		  (message (format "Fontifying %d -> %d" (car e) (cadr e)))
 		  (clang-faces-fontify-region-worker (car e) (cadr e)
-						     (caddr e)))
+						     (caddr e)
+						     clang-faces-min-point))
 	      clang-faces-fontify-region-queue)
-    (setq clang-faces-fontify-region-queue nil)))
+    (setq clang-faces-fontify-region-queue nil)
+    (setq clang-faces-min-point 1000000)))
 
 (defun clang-faces-fontify-region (&optional start end verbose)
+  "Puts all fontification requests into a queue to be fontified
+later when clang-faces process finishes and returns new info."
   (message (format "Fontify Region! %d %d" start end))
 
   (setq clang-faces-fontify-region-queue 
@@ -142,8 +157,6 @@
   (interactive)
   (clang-faces-fontify-region-worker (point-min) (point-max) 
 				     (or buf (current-buffer))))
-
-(defvar clang-faces-parsed-data nil)
 
 (defun clang-faces-parse-incoming-data ()
   (with-temp-buffer
@@ -162,25 +175,30 @@
 		 (match-string 3))))))
       (setq clang-faces-parsed-data pdata))))
 
-(defun clang-faces-process-reparse-request (&optional buf)
+(defvar clang-faces-last-tick nil)
+(defun clang-faces-process-reparse-request (&optional buf begin end)
   (interactive)
-  (clang-faces-fontify-queue)
+  ;(clang-faces-fontify-queue)
   (with-current-buffer (or buf (current-buffer))
-   (when (and clang-faces-process
-	      (eq clang-faces-status 'idle))
-     (message "Reparse request!")
-     (setq clang-faces-status 'busy)
-     ;; (process-send-string clang-faces-process 
-     ;; 			 (concat "\n"
-     ;; 				 clang-faces-output-finished-marker))
+    (when (and clang-faces-process
+	       (eq clang-faces-status 'idle)
+	       (not (eq (buffer-modified-tick) clang-faces-last-tick)))
+      (message "Reparse request!")
+      (setq clang-faces-status 'busy)
+      (setq clang-faces-last-tick (buffer-modified-tick))
+      ;; (process-send-string clang-faces-process 
+      ;; 			 (concat "\n"
+      ;; 				 clang-faces-output-finished-marker))
 
-     (process-send-string clang-faces-process "\nREPARSE\n")
-     (process-send-string clang-faces-process
-			  (concat
-			   (buffer-substring-no-properties (point-min)
-							   (point-max))
-			   clang-faces-output-finished-marker
-			   "\n")))))
+      (process-send-string clang-faces-process "\nREPARSE\n")
+      (process-send-string clang-faces-process
+			   (concat
+			    (buffer-substring-no-properties (or begin 
+								(point-min))
+							    (or end 
+								(point-max)))
+			    clang-faces-output-finished-marker
+			    "\n")))))
 
 (defmacro safe1- (n)
   `(if ,n (1- ,n) nil))
@@ -231,8 +249,11 @@
 			(function clang-faces-process-filter))
     (message "Clang Faces Process Launched!")))
 
+;; TODO: horrible garbage + bad idea that needs revamp
 (defvar clang-faces-last-point 0)
 (defvar clang-faces-point-delta 0)
+(defvar clang-faces-min-point 100000000)
+
 (defun clang-faces-adjust-delta ()
   (loop for elem in clang-faces-parsed-data
 	for s = (car elem)
@@ -245,16 +266,24 @@
 	collect (list s e type)))
 ;(clang-faces-adjust-delta)
 (defun clang-faces-post-command ()
-  (pp last-command)
-  (pp this-command)
-  (pp (first buffer-undo-list))
-  (setq clang-faces-point-delta (+ clang-faces-point-delta
-				   (- (point) 
-				      clang-faces-last-point)))
-  (message "Last P: %d This P: %d Running Delta: %d"
-	   clang-faces-last-point (point) clang-faces-point-delta)
-  (setq clang-faces-last-point (point))
-  (setq clang-faces-parsed-data (clang-faces-adjust-delta)))
+  ;; (pp last-command)
+  ;; (pp this-command)
+  ;; (pp (first buffer-undo-list))
+  ;; (setq clang-faces-point-delta (+ clang-faces-point-delta
+  ;; 				   (- (point) 
+  ;; 				      clang-faces-last-point)))
+  ;; (message "Last P: %d This P: %d Running Delta: %d"
+  ;; 	   clang-faces-last-point (point) clang-faces-point-delta)
+  (when (eq last-command 'self-insert-command)
+    (setq clang-faces-last-point (point))
+    (if (memq last-input-event '(return kp-enter))
+	(setq clang-faces-min-point (point))
+      (setq clang-faces-min-point (min clang-faces-last-point
+				       clang-faces-min-point)))
+    (message (format "Point = %d Min = %d" (point) clang-faces-min-point))
+    )
+  ;(setq clang-faces-parsed-data (clang-faces-adjust-delta))
+  )
 
 (defun clang-faces-mode-default-hook ()
   (if clang-faces-reparse-timer
@@ -273,30 +302,42 @@
   (setq font-lock-fontify-buffer-function
 	(function font-lock-default-fontify-buffer))
   (setq font-lock-fontify-region-function
-	(function font-lock-default-unfontify-region))
+	(function font-lock-default-fontify-region))
   (setq clang-faces-mode nil)
   (message "Clang Faces Disabled")
-  ;(remove-hook 'post-command-hook 'clang-faces-post-command t)
+  (remove-hook 'post-command-hook 'clang-faces-post-command t)
   )
 
 (defun clang-faces-mode-enable ()
   (clang-faces-relaunch-process)
 
-  (setq clang-faces-fontify-timer
-	(run-at-time 5 5 (function clang-faces-fontify-buffer)
-		     (current-buffer)))
+  (font-lock-mode -1)
+  (setq font-lock-defaults
+	`(("auto")
+	  nil
+	  nil
+	  ,c-identifier-syntax-modifications
+	  c-beginning-of-syntax
+	  (font-lock-fontify-region-function . clang-faces-fontify-region)
+	  (font-lock-fontify-buffer-function . clang-faces-fontify-buffer)))
+
+  (setq font-lock-fontify-buffer-function
+  	(function clang-faces-fontify-buffer))
+  (setq font-lock-fontify-region-function
+  	(function clang-faces-fontify-region))
+
+  (font-lock-mode 1)
+  ;; (setq clang-faces-fontify-timer
+  ;; 	(run-at-time 5 5 (function clang-faces-fontify-buffer)
+  ;; 		     (current-buffer)))
   (setq clang-faces-reparse-timer
-	(run-at-time 15 15 (function 
-			    clang-faces-process-reparse-request)
-		     (current-buffer)))
+	(run-with-idle-timer 5 5 (function 
+				  clang-faces-process-reparse-request)
+			     (current-buffer)))
 
   ;;(jit-lock-register (function clang-faces-fontify-region))
-  (setq font-lock-fontify-buffer-function
-	(function clang-faces-fontify-region))
-  (setq font-lock-fontify-region-function
-	(function clang-faces-fontify-region))
   (setq clang-faces-mode t)
-  ;(add-hook 'post-command-hook 'clang-faces-post-command t)
+  (add-hook 'post-command-hook 'clang-faces-post-command t t)
   )
 
 (defvar clang-faces-mode nil)

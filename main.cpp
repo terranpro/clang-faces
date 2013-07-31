@@ -21,7 +21,7 @@
  * 
  * Author: Brian Fransioli <assem@terranpro.org>
  * Created: Tue Jul 18:55:32 KST 2013
- * Last modified: Tue Jul 30 18:57:52 KST 2013
+ * Last modified: Wed Jul 31 17:16:04 KST 2013
  */
 
 #include <iostream>
@@ -70,7 +70,10 @@ std::string CursorKindSpelling( CXCursor cursor )
     newcursor = clang_getCursorReferenced( cursor );
     std::cout << "NEW CURSOR: " << newcursor << "\n";
     return CursorKindSpelling( newcursor );
-  
+
+  case CXCursor_Constructor:
+  case CXCursor_Destructor:
+  case CXCursor_CXXMethod:
   case CXCursor_CallExpr:
   case CXCursor_FunctionDecl:
     return "Function";
@@ -78,8 +81,12 @@ std::string CursorKindSpelling( CXCursor cursor )
   case CXCursor_ParmDecl:
   case CXCursor_VarDecl:
   case CXCursor_FieldDecl:
+  case CXCursor_MemberRef:
     return "Variable";
 
+  case CXCursor_NamespaceRef:
+    return "Namespace";
+    
   default:
     return "Identifier";
   }
@@ -125,6 +132,12 @@ void TokenizeSource(CXTranslationUnit tu)
     	      << "\n";
     
     clang_disposeString( cursor_spelling );
+
+    // TODO: testing this hack for int -> identifier instead of keyword
+    // but this loses const to an identifier also! fvck!
+    // if ( tspelling == "Keyword" )
+    //   if ( clang_getCursorType( cursors[ t ] ).kind != CXType_Invalid )
+    // 	tspelling = "Identifier";
     
     std::cout
       << startoffset << ":" << endoffset << " @ "
