@@ -8,9 +8,14 @@ int f( int x )
 
 struct functor 
 {
+  int g(long a) 
+  {
+    return a / 2;
+  }
+  
   int operator()(int x, int y, int z)
   {
-    return x + 2*y + 3*z;
+    return x + f(y)*2 + 3*g(z);
   }
 };
 
@@ -20,7 +25,9 @@ int main(int argc, char *argv[])
   int geez = 0;
   
   v[ geez ] = 1;
-
+  v[ 4 ] = 3;
+  v[ f( 3 ) ] = 3;
+  
   f( v[ geez ] );
 
   functor()( v[geez], v[geez] + 1, v[geez + 2 ] );
