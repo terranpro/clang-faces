@@ -21,7 +21,7 @@
  * 
  * Author: Brian Fransioli <assem@terranpro.org>
  * Created: Tue Jul 18:55:32 KST 2013
- * Last modified: Fri Aug  2 11:32:26 KST 2013
+ * Last modified: Sat Aug  3 21:41:55 KST 2013
  */
 
 #include <iostream>
@@ -51,12 +51,30 @@ std::string TokenKindSpelling( CXTokenKind kind )
   return {};
 }
 
+// std::ostream& operator<<( std::ostream &os, CXCursor cursor )
+// {
+//   auto spelling = clang_getCursorKindSpelling( cursor.kind );
+//   os << clang_getCString( spelling );
+//   clang_disposeString( spelling );
+//   return os;
+// }
+
 std::ostream& operator<<( std::ostream &os, CXCursor cursor )
 {
   auto spelling = clang_getCursorKindSpelling( cursor.kind );
-  os << clang_getCString( spelling );
+  auto morespell = clang_getCursorSpelling( cursor );
+  
+  os << clang_getCString( spelling ) << ":" << clang_getCString( morespell ) << " ";
+
   clang_disposeString( spelling );
-  return os;
+  clang_disposeString( morespell );
+
+  auto refcursor = clang_getCursorReferenced( cursor );
+  if ( clang_equalCursors( refcursor, clang_getNullCursor() )||
+       clang_equalCursors( refcursor, cursor ) )
+    return os;
+    
+  return os << " [ " << refcursor << " ] ";
 }
 
 std::ostream& operator<<( std::ostream& os, CXSourceLocation loc )
@@ -78,124 +96,46 @@ std::ostream& operator<<( std::ostream& os, CXType type )
   return os;
 }
 
+std::ostream& operator<<( std::ostream& os, CXString str )
+{
+  os << clang_getCString( str );
+  return os;
+}
+
 CXChildVisitResult
-CXXMethodVisitor( CXCursor cursor, CXCursor parent, CXClientData )
+CallExprVisitor( CXCursor cursor, CXCursor parent, CXClientData d )
 {
-  std::cout << " !*! " << cursor << clang_getCursorLocation( cursor ) << "\n";
-  return CXChildVisit_Recurse;
+  std::string *result = reinterpret_cast<std::string *>( d );
+  
+  if ( cursor.kind == CXCursor_TypeRef )
+    *result = "Variable";
+  
+  return CXChildVisit_Break;
 }
-
-unsigned int
-CursorExtent( CXCursor cursor )
-{
-  auto range = clang_getCursorExtent( cursor );
-  auto endloc = clang_getRangeEnd( range );
-  auto tu = clang_Cursor_getTranslationUnit( cursor );
-  
-  unsigned int offset;
-
-  clang_getFileLocation( endloc, NULL, NULL, NULL, &offset );
-  return offset;
-}
-
-std::vector<CXCursor>
-ExtractSourceRangeCursors( CXTranslationUnit tu, CXSourceRange range )
-{
-  std::vector<CXCursor> cursors;
-  unsigned int offset;
-  unsigned int endoffset;
-  CXCursor thiscursor;
-  CXFile cxfile;
-  
-  clang_getCursorExtent( thiscursor );
-  
-  auto loc = clang_getRangeStart( range );
-  auto endloc = clang_getRangeEnd( range );
-  
-  clang_getFileLocation( loc, &cxfile, NULL, NULL, &offset );
-  clang_getFileLocation( endloc, NULL, NULL, NULL, &endoffset );
-
-  std::cout << "offset = " << offset << " endoffset = " << endoffset << "\n";
-  
-  while( offset < endoffset ) {
-    thiscursor = clang_getCursor( tu, loc );
-    cursors.push_back( thiscursor );
-
-    auto thisoffset = CursorExtent( thiscursor );
-    std::cout << "thisoffset = " << thisoffset << "\n";
-    
-    offset = thisoffset + 1;
-    loc = clang_getLocationForOffset( tu, cxfile, offset);
-  }
-
-  return cursors;
-}
-
-void
-CXXMethodReferenceRange( CXCursor cursor )
-{
-  auto range =
-    clang_getCursorReferenceNameRange( cursor,
-				       0, //CXNameRange_WantSinglePiece,
-				       0 );
-  auto tu = clang_Cursor_getTranslationUnit( cursor );
-  auto startloc = clang_getRangeStart( range );
-  auto endloc = clang_getRangeEnd( range );
-  
-  std::cout << "RANGE: " << startloc
-	    << "(" << clang_getCursor( tu, startloc ) << ")"
-	    << " to " << endloc
-	    << "(" << clang_getCursor( tu, endloc ) << ")\n";
-
-  for ( auto c : ExtractSourceRangeCursors( tu, range ) ) {
-    auto type = clang_getCursorType( c ).kind;
-    std::cout << "<*> " << c << "  - TYPE: " << type << "\n";
-  }
-  
-  return;
-}
-
+		 
 std::string CursorKindSpelling( CXCursor cursor )
 {
   auto kind = cursor.kind;
   CXCursor newcursor;
+  std::string result = "Function";
   
   switch( kind ) {
   case CXCursor_DeclRefExpr:
-    std::cout << "DECLREF TYPE = " << clang_getCursorType( cursor ) << "\n";
-    std::cout << "RESULT TYPE = " << clang_getCursorResultType( cursor ) << "\n";
-    std::cout << "SEMANTIC PARENT = "
-	      << clang_getCursorSemanticParent( cursor )
-	      << clang_getCursorType( clang_getCursorSemanticParent( cursor ) )
-	      << "\n";
-    std::cout << "LEXICAL PARENT = "
-	      << clang_getCursorLexicalParent( cursor ) << "\n";
-    
   case CXCursor_MemberRefExpr:
-    CXXMethodReferenceRange( cursor );
     newcursor = clang_getCursorReferenced( cursor );
     std::cout << "NEW CURSOR: " << newcursor << "\n";
     return CursorKindSpelling( newcursor );
 
+  case CXCursor_CallExpr:
+    clang_visitChildren( cursor, CallExprVisitor,
+			 reinterpret_cast<std::string *>(&result) );
+    return result;
+
   case CXCursor_CXXMethod:
-    clang_visitChildren( cursor, CXXMethodVisitor, nullptr );
-    CXXMethodReferenceRange( cursor );
-    
   case CXCursor_Constructor:
   case CXCursor_Destructor:
-  case CXCursor_CallExpr:
   case CXCursor_FunctionDecl:
   case CXCursor_OverloadedDeclRef:
-    std::cout << "SEMANTIC PARENT = "
-	      << clang_getCursorSemanticParent( cursor )
-	      << clang_getCursorType( clang_getCursorSemanticParent( cursor ) )
-	      << "\n";
-
-    std::cout << "LEXICAL PARENT = "
-	      << clang_getCursorLexicalParent( cursor )
-	      << clang_getCursorType( clang_getCursorSemanticParent( cursor ) )
-	      << "\n";
-
     return "Function";
 
   case CXCursor_ParmDecl:
@@ -215,6 +155,19 @@ std::string CursorKindSpelling( CXCursor cursor )
   return {};
 }
 
+std::vector<CXCursor>
+my_annotateTokens( CXTranslationUnit tu, CXToken *tokens,
+		   unsigned token_count )
+{
+  std::vector<CXCursor> cursors( token_count );
+  for ( auto n = 0u; n < token_count; ++n ) {
+    auto location = clang_getTokenLocation( tu, tokens[ n ] );
+    cursors[n] = ( clang_getCursor( tu, location ) );
+  }
+  
+  return cursors;
+}
+
 void TokenizeSource(CXTranslationUnit tu)
 {
   CXSourceRange range =
@@ -227,9 +180,10 @@ void TokenizeSource(CXTranslationUnit tu)
 
   std::cout << "Tokenize found " << token_count << " tokens.\n";
 
-  CXCursor cursors[ token_count ];
-  clang_annotateTokens( tu, tokens, token_count, cursors );
-
+  //CXCursor cursors[ token_count ];
+  //clang_annotateTokens( tu, tokens, token_count, cursors );
+  auto cursors = my_annotateTokens( tu, tokens, token_count );
+  
   for ( auto t = 0u; t < token_count; ++t ) {
     auto tkind = clang_getTokenKind(tokens[t] );
     auto tspelling = tkind == CXToken_Identifier ?
@@ -239,6 +193,13 @@ void TokenizeSource(CXTranslationUnit tu)
     auto tstartloc = clang_getRangeStart( textent );
     auto tendloc = clang_getRangeEnd( textent );
 
+    auto tokspell = clang_getTokenSpelling( tu, tokens[ t ] );
+    std::cout << "TokenSpelling: " << tokspell << "\n";
+    std::cout << clang_getCursorDisplayName( cursors[ t ] ) << "\n";
+    std::cout << "USR: " << clang_getCursorUSR( cursors[ t ] ) << "\n";
+    
+    clang_disposeString( tokspell );
+    
     unsigned startline, startcol, startoffset, endline, endcol, endoffset;
     
     clang_getFileLocation( tstartloc, nullptr, &startline, &startcol,
@@ -322,7 +283,7 @@ int main(int argc, char *argv[])
     std::cout << "Translation Unit Parse Failed!\n";
     return -1;
   }
-  
+
   // else
   //   std::cout << "Translation Unit Created!\n"
   // 	      << end_pattern << "\n";
@@ -343,9 +304,10 @@ int main(int argc, char *argv[])
       // 		<< "Contents:\n" << filebuffer.data()
       // 		<< "\n";
 
-      if ( !clang_reparseTranslationUnit( tu, 1, &unsaved_file, options ) )
+      if ( !clang_reparseTranslationUnit( tu, 1, &unsaved_file, options ) ) {
 	TokenizeSource( tu );
-      else {
+	
+      } else {
 	std::cout << "Reparse FAILED!\n";
 	return -1;
       }
