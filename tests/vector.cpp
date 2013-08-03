@@ -8,12 +8,12 @@ int f( int x )
 
 struct functor 
 {
-  int g(long a) 
+  int g(long a) const
   {
     return a / 2;
   }
   
-  int operator()(int x, int y, int z)
+  int operator()(int x, int y, int z) const
   {
     return x + f(y)*2 + 3*g(z);
   }
@@ -22,7 +22,8 @@ struct functor
 int main(int argc, char *argv[])
 {
   std::vector<int> v { 1, 2, 3, 4, 5 };
-  int geez = 0;
+  auto geez = 0;
+  decltype( geez ) gazz = 1;
   
   v[ geez ] = 1;
   v[ 4 ] = 3;
