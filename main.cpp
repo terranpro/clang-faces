@@ -21,7 +21,7 @@
  * 
  * Author: Brian Fransioli <assem@terranpro.org>
  * Created: Tue Jul 18:55:32 KST 2013
- * Last modified: Sat Aug  3 21:41:55 KST 2013
+ * Last modified: Sun Aug  4 00:07:04 KST 2013
  */
 
 #include <iostream>
@@ -132,9 +132,9 @@ std::string CursorKindSpelling( CXCursor cursor )
     return result;
 
   case CXCursor_CXXMethod:
+  case CXCursor_FunctionDecl:
   case CXCursor_Constructor:
   case CXCursor_Destructor:
-  case CXCursor_FunctionDecl:
   case CXCursor_OverloadedDeclRef:
     return "Function";
 
@@ -143,6 +143,7 @@ std::string CursorKindSpelling( CXCursor cursor )
   case CXCursor_FieldDecl:
   case CXCursor_MemberRef:
   case CXCursor_VariableRef:
+  case CXCursor_NonTypeTemplateParameter:
     return "Variable";
 
   case CXCursor_NamespaceRef:
@@ -218,10 +219,28 @@ void TokenizeSource(CXTranslationUnit tu)
     // TODO: testing this hack for int -> identifier instead of keyword
     // but this loses const to an identifier also! fvck!
     if ( tspelling == "Keyword" ) {
-      auto type = clang_getCursorType( cursors[ t ] ).kind;
-      std::cout << "TYPE -> " << type << "\n";
-      if ( ( type >= CXType_FirstBuiltin && type <= CXType_LastBuiltin ) ||
-	   ( cursors[t].kind == CXCursor_VarDecl ) )
+      auto type = clang_getCursorType( cursors[ t ] );
+      auto typekind = type.kind;
+      CXString typespelling;
+
+      if ( cursors[t].kind == CXCursor_FunctionDecl ||
+	   cursors[t].kind == CXCursor_CXXMethod ) {
+	type = clang_getResultType( type );
+	typekind = type.kind;
+	typespelling = clang_getTypeSpelling( type );
+      }
+      else
+	typespelling = clang_getTypeSpelling( type );
+      
+      std::cout << "Type = " << type << " kind: " << typekind << "\n";
+      std::cout << clang_getCString(typespelling) << " <-> " << clang_getCString(tokspell) << "\n";
+      std::cout << " Const? " << clang_isConstQualifiedType( type ) << "\n";
+      
+      if ( (( typekind >= CXType_FirstBuiltin && typekind <= CXType_LastBuiltin ) &&
+	    ( std::string(clang_getCString(typespelling)) ==
+	      std::string(clang_getCString(tokspell) ) )) ||
+	   //	   ( cursors[t].kind == CXCursor_VarDecl ) ||
+	   ( cursors[t].kind == CXCursor_ParmDecl ) )
     	tspelling = "Identifier";
     }
 
