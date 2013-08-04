@@ -13,7 +13,8 @@ find_package(Clang REQUIRED)
 
 message(STATUS "LLVM LDFLAGS = ${LLVM_MODULE_LIBS}")
 
-FILE( GLOB_RECURSE ALL_SRC "${CMAKE_SOURCE_DIR}/*.cpp" )
+#FILE( GLOB_RECURSE ALL_SRC "${CMAKE_SOURCE_DIR}/*.cpp" )
+FILE( GLOB ALL_SRC "${CMAKE_SOURCE_DIR}/*.cpp" )
 string(REGEX REPLACE ".*/CMakeFiles/[^;]+;?" "" ALL_SRC "${ALL_SRC}")
 
 message(STATUS "Source files found: ${ALL_SRC}")
@@ -34,10 +35,30 @@ ${LLVM_LIBRARY_DIRS}
 add_executable( 
 ${PROJECT_NAME}
 
-${ALL_SRC}
+main.cpp
+#${ALL_SRC}
 )
 
 target_link_libraries( ${PROJECT_NAME} 
+-Wl,--start-group
+${LLVM_LIBNAMES}
+${CLANG_LIBS} 
+-Wl,--end-group
+)
+
+add_definitions(
+  ${LLVM_CFLAGS}
+  -Wall
+  -std=c++0x
+  )
+
+add_executable( 
+sniper
+
+sniper.cpp
+)
+
+target_link_libraries( sniper
 -Wl,--start-group
 ${LLVM_LIBNAMES}
 ${CLANG_LIBS} 
