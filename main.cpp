@@ -21,7 +21,7 @@
  * 
  * Author: Brian Fransioli <assem@terranpro.org>
  * Created: Tue Jul 18:55:32 KST 2013
- * Last modified: Sun Aug  4 00:07:04 KST 2013
+ * Last modified: Sun Aug  4 15:06:47 KST 2013
  */
 
 #include <iostream>
@@ -112,7 +112,7 @@ CallExprVisitor( CXCursor cursor, CXCursor parent, CXClientData d )
   
   return CXChildVisit_Break;
 }
-		 
+
 std::string CursorKindSpelling( CXCursor cursor )
 {
   auto kind = cursor.kind;
@@ -123,7 +123,7 @@ std::string CursorKindSpelling( CXCursor cursor )
   case CXCursor_DeclRefExpr:
   case CXCursor_MemberRefExpr:
     newcursor = clang_getCursorReferenced( cursor );
-    std::cout << "NEW CURSOR: " << newcursor << "\n";
+    // std::cout << "NEW CURSOR: " << newcursor << "\n";
     return CursorKindSpelling( newcursor );
 
   case CXCursor_CallExpr:
@@ -195,27 +195,14 @@ void TokenizeSource(CXTranslationUnit tu)
     auto tendloc = clang_getRangeEnd( textent );
 
     auto tokspell = clang_getTokenSpelling( tu, tokens[ t ] );
-    std::cout << "TokenSpelling: " << tokspell << "\n";
-    std::cout << clang_getCursorDisplayName( cursors[ t ] ) << "\n";
-    std::cout << "USR: " << clang_getCursorUSR( cursors[ t ] ) << "\n";
-    
-    clang_disposeString( tokspell );
-    
-    unsigned startline, startcol, startoffset, endline, endcol, endoffset;
-    
-    clang_getFileLocation( tstartloc, nullptr, &startline, &startcol,
-			   &startoffset );
-    clang_getFileLocation( tendloc, nullptr, &endline, &endcol,
-			   &endoffset );
+    // std::cout << "TokenSpelling: " << tokspell << "\n";
+    // std::cout << clang_getCursorDisplayName( cursors[ t ] ) << "\n";
+    // std::cout << "USR: " << clang_getCursorUSR( cursors[ t ] ) << "\n";
 
-    auto cursor_spelling =
-      clang_getCursorKindSpelling( cursors[t].kind );
-
-    std::cout << "Cursor Spelling: " << clang_getCString(cursor_spelling )
-    	      << "\n";
+    unsigned int startoffset, endoffset;
+    clang_getSpellingLocation( tstartloc, nullptr, nullptr, nullptr, &startoffset );
+    clang_getSpellingLocation( tendloc, nullptr, nullptr, nullptr, &endoffset );
     
-    clang_disposeString( cursor_spelling );
-
     // TODO: testing this hack for int -> identifier instead of keyword
     // but this loses const to an identifier also! fvck!
     if ( tspelling == "Keyword" ) {
@@ -232,9 +219,9 @@ void TokenizeSource(CXTranslationUnit tu)
       else
 	typespelling = clang_getTypeSpelling( type );
       
-      std::cout << "Type = " << type << " kind: " << typekind << "\n";
-      std::cout << clang_getCString(typespelling) << " <-> " << clang_getCString(tokspell) << "\n";
-      std::cout << " Const? " << clang_isConstQualifiedType( type ) << "\n";
+      // std::cout << "Type = " << type << " kind: " << typekind << "\n";
+      // std::cout << clang_getCString(typespelling) << " <-> " << clang_getCString(tokspell) << "\n";
+      // std::cout << " Const? " << clang_isConstQualifiedType( type ) << "\n";
       
       if ( (( typekind >= CXType_FirstBuiltin && typekind <= CXType_LastBuiltin ) &&
 	    ( std::string(clang_getCString(typespelling)) ==
@@ -244,15 +231,16 @@ void TokenizeSource(CXTranslationUnit tu)
     	tspelling = "Identifier";
     }
 
-    std::cout
-      << startoffset << ":" << endoffset << " @ "
-      << tspelling  << "\n\n\n";
+    if ( tspelling != "Punctuation" )
+      std::cout
+	<< startoffset << ":" << endoffset << " @ "
+	<< tspelling  << "\n";
 
-    //clang_disposeString( tspelling );
+    clang_disposeString( tokspell );
   }
 
   std::cout << "\n" << end_pattern << "\n";
-  
+
   clang_disposeTokens( tu, tokens, token_count );
 }
 
@@ -307,7 +295,7 @@ int main(int argc, char *argv[])
   //   std::cout << "Translation Unit Created!\n"
   // 	      << end_pattern << "\n";
 
-  TokenizeSource( tu );
+  //TokenizeSource( tu );
 
   std::string input;
   std::vector<char> filebuffer;
