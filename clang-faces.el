@@ -307,6 +307,7 @@ region."
     (setq clang-faces-hilight-request-queue
 	  (append clang-faces-hilight-request-queue
 		  (list entry)))
+    (setq clang-faces-delta-beg nil)
     (clang-faces-request-hilight-worker proc)))
 
 (defun clang-faces-before-change (beg end)
@@ -347,17 +348,19 @@ region."
     (message (format
 	      "Inserted text: %s" 
 	      (buffer-substring-no-properties beg end)))
-    (if (null clang-faces-delta-beg)
-	;; Delta Start nil - mark this as the start of delta reg
-	(setq clang-faces-delta-beg beg)
-      ;; Delta Start Region already exists... check for stop char
-      (when (and (not (null this-command))
-		 (memls "(){};<>"
-			(buffer-substring-no-properties beg end)))
-	;; Stop character found, mark end of delta region
-	(setq clang-faces-delta-end end)
-	(clang-faces-request-hilight)
-	(setq clang-faces-valid-pt (min clang-faces-delta-beg clang-faces-valid-pt)))))
+    (if clang-faces-delta-beg
+	;; Delta Start Region already exists... check for stop char
+	(when (and clang-faces-delta-beg
+		   (not (null this-command))
+		   (memls "(){};<>:"
+			  (buffer-substring-no-properties beg end)))
+	  ;; Stop character found, mark end of delta region
+	  (setq clang-faces-delta-end end)
+	  (setq clang-faces-valid-pt (min clang-faces-delta-beg
+				    clang-faces-valid-pt))
+	  (clang-faces-request-hilight))
+      ;; Delta Start nil - mark this as the start of delta reg
+      (setq clang-faces-delta-beg beg)))
 
   (when (eq clang-faces-current-change 'deletion)
     (message "Deletion!")
@@ -385,6 +388,7 @@ region."
   (setq clang-faces-delta-beg nil)
   (setq clang-faces-delta-end nil)
   (setq clang-faces-valid-pt nil)
+  (setq clang-faces-hilight-request-queue nil)
 
   (setq clang-faces-point-delta 0)
   (setq clang-faces-last-point 0)
