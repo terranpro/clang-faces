@@ -21,7 +21,7 @@
  * 
  * Author: Brian Fransioli <assem@terranpro.org>
  * Created: Tue Jul 18:55:32 KST 2013
- * Last modified: Sun Aug  4 15:06:47 KST 2013
+ * Last modified: Mon Aug  5 20:28:59 KST 2013
  */
 
 #include <iostream>
@@ -88,6 +88,13 @@ std::ostream& operator<<( std::ostream& os, CXSourceLocation loc )
   return os;
 }
 
+std::ostream& operator<<( std::ostream& os, CXSourceRange range )
+{
+  auto beg = clang_getRangeStart( range );
+  auto end = clang_getRangeEnd( range );
+  return os << beg << " -> " << end << "\n";
+}
+
 std::ostream& operator<<( std::ostream& os, CXType type )
 {
   auto typestr = clang_getTypeSpelling( type );
@@ -106,31 +113,45 @@ CXChildVisitResult
 CallExprVisitor( CXCursor cursor, CXCursor parent, CXClientData d )
 {
   std::string *result = reinterpret_cast<std::string *>( d );
-  
+
+  std::cout << "Child of CallExpr = " << cursor << "\n";
+
   if ( cursor.kind == CXCursor_TypeRef )
-    *result = "Variable";
+    *result = "Identifier";
+    //    *result = "Variable";
   
   return CXChildVisit_Break;
 }
+
+std::string AdvancedCallExprHandler( CXCursor cursor )
+{
+  auto newcursor = clang_getCursorReferenced( cursor );
+  std::string result = "Function";
+  
+  if ( newcursor.kind == CXCursor_Constructor )
+    result = "Identifier";
+  else 
+    clang_visitChildren( cursor, CallExprVisitor,
+			 reinterpret_cast<std::string *>(&result) );
+  return result;
+}
+
 
 std::string CursorKindSpelling( CXCursor cursor )
 {
   auto kind = cursor.kind;
   CXCursor newcursor;
-  std::string result = "Function";
   
   switch( kind ) {
   case CXCursor_DeclRefExpr:
   case CXCursor_MemberRefExpr:
     newcursor = clang_getCursorReferenced( cursor );
-    // std::cout << "NEW CURSOR: " << newcursor << "\n";
+    std::cout << "NEW CURSOR: " << newcursor << "\n";
     return CursorKindSpelling( newcursor );
 
   case CXCursor_CallExpr:
-    clang_visitChildren( cursor, CallExprVisitor,
-			 reinterpret_cast<std::string *>(&result) );
-    return result;
-
+    return AdvancedCallExprHandler( cursor );
+    
   case CXCursor_CXXMethod:
   case CXCursor_FunctionDecl:
   case CXCursor_Constructor:
@@ -179,8 +200,6 @@ void TokenizeSource(CXTranslationUnit tu)
   
   clang_tokenize( tu, range, &tokens, &token_count );
 
-  std::cout << "Tokenize found " << token_count << " tokens.\n";
-
   //CXCursor cursors[ token_count ];
   //clang_annotateTokens( tu, tokens, token_count, cursors );
   auto cursors = my_annotateTokens( tu, tokens, token_count );
@@ -195,7 +214,15 @@ void TokenizeSource(CXTranslationUnit tu)
     auto tendloc = clang_getRangeEnd( textent );
 
     auto tokspell = clang_getTokenSpelling( tu, tokens[ t ] );
-    // std::cout << "TokenSpelling: " << tokspell << "\n";
+    std::cout << "TokenSpelling: " << tokspell << "\n";
+    std::cout << "Cursor: " << cursors[ t ] << "\n";
+
+    // if ( !( cursors[t].kind >= CXCursor_FirstInvalid &&
+    // 	    cursors[t].kind <= CXCursor_LastInvalid ) ) {
+    //   auto rr = clang_getCursorExtent( cursors[ t ] );
+    //   std::cout << "Range: " << rr << "\n";
+    // }
+    
     // std::cout << clang_getCursorDisplayName( cursors[ t ] ) << "\n";
     // std::cout << "USR: " << clang_getCursorUSR( cursors[ t ] ) << "\n";
 
@@ -231,10 +258,10 @@ void TokenizeSource(CXTranslationUnit tu)
     	tspelling = "Identifier";
     }
 
-    if ( tspelling != "Punctuation" )
-      std::cout
-	<< startoffset << ":" << endoffset << " @ "
-	<< tspelling  << "\n";
+    //if ( tspelling != "Punctuation" )
+    std::cout
+      << startoffset << ":" << endoffset << " @ "
+      << tspelling  << "\n";
 
     clang_disposeString( tokspell );
   }
