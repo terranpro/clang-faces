@@ -21,7 +21,7 @@
  * 
  * Author: Brian Fransioli
  * Created: Sat Aug 16:35:53 KST 2013
- * Last modified: Mon Aug  5 00:57:29 KST 2013
+ * Last modified: Mon Aug  5 13:25:58 KST 2013
  */
 
 #include <iostream>
@@ -123,20 +123,26 @@ int main(int argc, char *argv[])
   auto file = clang_getFile( tu, filename.c_str() );
   auto location = clang_getLocation( tu, file, line, col );
 
+  
+  clang_visitChildren( clang_getTranslationUnitCursor( tu ), visitor,
+		       reinterpret_cast<CXClientData>(0) );
+  
   auto cursor = clang_getCursor( tu, location );
   auto refcursor = clang_getCursorReferenced( cursor );
+  auto rrefcursor = clang_getCursorReferenced( refcursor );
   auto arf = clang_getTypeKindSpelling( clang_getCursorType( cursor ).kind );
   auto foo = clang_getCanonicalCursor( cursor );
+  auto semparent = clang_getCursorSemanticParent( cursor );
   
   std::cout << cursor << "\n";
   std::cout << refcursor << "\n";
+  std::cout << rrefcursor << "\n";
   std::cout << clang_getCString(arf) << "\n";
   std::cout << foo << "\n";
-  
-  clang_disposeString( arf );
+  std::cout << "Parent: " << semparent << "\n";
 
-  clang_visitChildren( clang_getTranslationUnitCursor( tu ), visitor,
-		       reinterpret_cast<CXClientData>(0) );
+  clang_visitChildren( semparent, visitor, reinterpret_cast<CXClientData>(0) );
+  clang_disposeString( arf );
 
   return 0;
 }
