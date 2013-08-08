@@ -228,13 +228,18 @@ region."
 
 (defun clang-faces-process-filter (process output)
   ;;(message "Inside Process Filter!")
+  (setq clang-faces-fontification-data-incoming
+	(concat clang-faces-fontification-data-incoming
+		(substring output 0 
+			   ;(safe1- off)
+			   )))
   (let ((off (string-match 
 	      (concat "^" (regexp-quote
 			   clang-faces-output-finished-marker))
-	      output)))
-    (setq clang-faces-fontification-data-incoming
-	  (concat clang-faces-fontification-data-incoming
-		  (substring output 0 (safe1- off))))
+	      clang-faces-fontification-data-incoming
+	      ;output
+	      )))
+    
 
     (if off (progn
 	      (message "End of Output Detected!")
@@ -300,8 +305,8 @@ region."
   )
 
 (defun clang-faces-request-hilight ()
-  (let* ((beg clang-faces-delta-beg)
-	 (end clang-faces-delta-end)
+  (let* ((beg (or clang-faces-delta-beg (point-min)))
+	 (end (or clang-faces-delta-end (point-max)))
 	 (entry (list beg end))
 	 (proc clang-faces-process))
     (setq clang-faces-hilight-request-queue
@@ -382,8 +387,8 @@ region."
 (defun clang-faces-mode-default-hook ()
   ;; (if clang-faces-reparse-timer
   ;;     (cancel-timer clang-faces-reparse-timer))
-  ;; (if clang-faces-fontify-timer
-  ;;     (cancel-timer clang-faces-fontify-timer))
+  (if clang-faces-fontify-timer
+      (cancel-timer clang-faces-fontify-timer))
 
   (setq clang-faces-delta-beg nil)
   (setq clang-faces-delta-end nil)
@@ -433,9 +438,13 @@ region."
   ;; 	(function clang-faces-fontify-region))
 
   (font-lock-mode 1)
-  ;; (setq clang-faces-fontify-timer
-  ;; 	(run-at-time 5 5 (function clang-faces-fontify-buffer)
-  ;; 		     (current-buffer)))
+  (setq clang-faces-fontify-timer
+  	;; (run-with-idle-timer 5 5 (function clang-faces-fontify-buffer)
+	;; 		     (current-buffer))
+	(run-with-idle-timer 5 5 (function clang-faces-request-hilight)
+			     ;(current-buffer)
+			     )
+)
   ;; (setq clang-faces-reparse-timer
   ;; 	(run-with-idle-timer 5 2 (function 
   ;; 				  clang-faces-process-reparse-request)
