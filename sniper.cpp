@@ -21,7 +21,7 @@
  * 
  * Author: Brian Fransioli
  * Created: Sat Aug 16:35:53 KST 2013
- * Last modified: Mon Aug  5 13:25:58 KST 2013
+ * Last modified: Mon Aug 12 14:29:47 KST 2013
  */
 
 #include <iostream>
@@ -133,15 +133,17 @@ int main(int argc, char *argv[])
   auto arf = clang_getTypeKindSpelling( clang_getCursorType( cursor ).kind );
   auto foo = clang_getCanonicalCursor( cursor );
   auto semparent = clang_getCursorSemanticParent( cursor );
-  
+  auto lexparent = clang_getCursorLexicalParent( cursor );
+
   std::cout << cursor << "\n";
   std::cout << refcursor << "\n";
   std::cout << rrefcursor << "\n";
   std::cout << clang_getCString(arf) << "\n";
   std::cout << foo << "\n";
   std::cout << "Parent: " << semparent << "\n";
-
-  clang_visitChildren( semparent, visitor, reinterpret_cast<CXClientData>(0) );
+  std::cout << "LexParent: " << lexparent << "\n";
+  
+  //clang_visitChildren( semparent, visitor, reinterpret_cast<CXClientData>(0) );
   clang_disposeString( arf );
 
   return 0;
