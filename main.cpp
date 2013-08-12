@@ -21,7 +21,7 @@
  * 
  * Author: Brian Fransioli <assem@terranpro.org>
  * Created: Tue Jul 18:55:32 KST 2013
- * Last modified: Mon Aug 12 10:10:48 KST 2013
+ * Last modified: Mon Aug 12 14:21:02 KST 2013
  */
 
 #include <iostream>
@@ -64,7 +64,8 @@ std::ostream& operator<<( std::ostream &os, CXCursor cursor )
   auto spelling = clang_getCursorKindSpelling( cursor.kind );
   auto morespell = clang_getCursorSpelling( cursor );
   
-  os << clang_getCString( spelling ) << ":" << clang_getCString( morespell ) << " ";
+  os << clang_getCString( spelling ) << ":"
+     << clang_getCString( morespell ) << " ";
 
   clang_disposeString( spelling );
   clang_disposeString( morespell );
@@ -354,30 +355,15 @@ struct TUnit
 int main(int argc, char *argv[])
 {
   auto index = clang_createIndex(0, 0);
-  auto options = clang_defaultEditingTranslationUnitOptions();
   char const *args[] = { "-x", "c++", "-std=c++11" };
   auto arg_count = sizeof( args ) / sizeof( *args );
   auto filename = argv[1];
   
-  CXUnsavedFile *unsaved_files = NULL;
-  auto unsaved_file_count = 0;
-  
   TUnit tu( index, filename );
   
-  // auto tu = clang_parseTranslationUnit(index, filename, args, arg_count,
-  // 				       unsaved_files, unsaved_file_count,
-  // 				       options );
-
   if ( !tu.parse( arg_count, args ) ) {
-    std::cout << "Translation Unit Parse Failed!\n";
-    //return -1;
+    std::cout << "Translation Unit Initial Parse Failed!\n";
   }
-
-  // else
-  //   std::cout << "Translation Unit Created!\n"
-  // 	      << end_pattern << "\n";
-
-  //TokenizeSource( tu );
 
   std::string input;
   std::vector<char> filebuffer;
@@ -393,14 +379,10 @@ int main(int argc, char *argv[])
       // 		<< "Contents:\n" << filebuffer.data()
       // 		<< "\n";
 
-      // if ( !clang_reparseTranslationUnit( tu, 1, &unsaved_file, options ) ) {
-      // 	TokenizeSource( tu );
-
       if ( tu.parse( std::vector<CXUnsavedFile>( 1, unsaved_file ) ) ) {
 	TokenizeSource( tu.handle() );
       } else {
 	std::cout << "Reparse FAILED!\n" << end_pattern << "\n";
-	//return -1;
       }
     }
   }
