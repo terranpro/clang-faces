@@ -21,7 +21,7 @@
  * 
  * Author: Brian Fransioli <assem@terranpro.org>
  * Created: Tue Jul 18:55:32 KST 2013
- * Last modified: Mon Aug  5 20:28:59 KST 2013
+ * Last modified: Mon Aug 12 10:10:48 KST 2013
  */
 
 #include <iostream>
@@ -296,8 +296,61 @@ std::vector<char> ReparseSource()
   return buffer;
 }
 
-int x = 1;
+struct TUnit 
+{
+  CXIndex index;
+  CXTranslationUnit unit;
+  std::string filename;
+  bool valid;
+  unsigned const options = clang_defaultEditingTranslationUnitOptions();
+  int orig_argc;
+  const char **orig_argv;
+  
+  TUnit( CXIndex idx, std::string file )
+    : index( idx ), filename(  file )
+  {}
 
+  ~TUnit()
+  { clang_disposeTranslationUnit( unit ); }
+  
+  bool parse( int argc, const char **argv,
+	      CXUnsavedFile *unsaved_files = nullptr,
+	      unsigned int unsaved_file_count = 0 )
+  {
+    orig_argc = argc;
+    orig_argv = argv;
+    unit = clang_parseTranslationUnit( index,
+				       filename.c_str(),
+				       argv,
+				       argc,
+				       unsaved_files,
+				       unsaved_file_count,
+				       options );
+    return valid = (unit != NULL);
+  }
+
+  CXTranslationUnit handle()
+  { return unit; }
+
+  bool parse( std::vector<CXUnsavedFile> unsavedfiles )
+  {
+    if ( !valid ) {
+      std::cout << "Warning, not valid!\n";
+      if ( !parse( orig_argc, orig_argv,
+		   unsavedfiles.data(),
+		   unsavedfiles.size() ) )
+	return false;
+    }
+    
+    valid = !clang_reparseTranslationUnit( unit,
+					   unsavedfiles.size(),
+					   unsavedfiles.data(),
+					   options );
+    
+    return valid;
+  }
+};
+    
 int main(int argc, char *argv[])
 {
   auto index = clang_createIndex(0, 0);
@@ -309,13 +362,15 @@ int main(int argc, char *argv[])
   CXUnsavedFile *unsaved_files = NULL;
   auto unsaved_file_count = 0;
   
-  auto tu = clang_parseTranslationUnit(index, filename, args, arg_count,
-				       unsaved_files, unsaved_file_count,
-				       options );
+  TUnit tu( index, filename );
   
-  if ( !tu ) {
+  // auto tu = clang_parseTranslationUnit(index, filename, args, arg_count,
+  // 				       unsaved_files, unsaved_file_count,
+  // 				       options );
+
+  if ( !tu.parse( arg_count, args ) ) {
     std::cout << "Translation Unit Parse Failed!\n";
-    return -1;
+    //return -1;
   }
 
   // else
@@ -338,12 +393,14 @@ int main(int argc, char *argv[])
       // 		<< "Contents:\n" << filebuffer.data()
       // 		<< "\n";
 
-      if ( !clang_reparseTranslationUnit( tu, 1, &unsaved_file, options ) ) {
-	TokenizeSource( tu );
-	
+      // if ( !clang_reparseTranslationUnit( tu, 1, &unsaved_file, options ) ) {
+      // 	TokenizeSource( tu );
+
+      if ( tu.parse( std::vector<CXUnsavedFile>( 1, unsaved_file ) ) ) {
+	TokenizeSource( tu.handle() );
       } else {
-	std::cout << "Reparse FAILED!\n";
-	return -1;
+	std::cout << "Reparse FAILED!\n" << end_pattern << "\n";
+	//return -1;
       }
     }
   }

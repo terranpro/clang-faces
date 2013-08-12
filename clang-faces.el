@@ -122,11 +122,11 @@
     ))
 
 (defun clang-faces-fontify-region-worker (start end buf &optional hardstoppt)
-  (message (format "Fontifying in %s" buf))
+  ;(message (format "Fontifying in %s" buf))
   (with-silent-modifications
     (mapcar
      #'(lambda (e)
-	 (message (format "Element: %d %d %s" (car e) (cadr e) (caddr e)))
+	 ;(message (format "Element: %d %d %s" (car e) (cadr e) (caddr e)))
 	 (clang-faces-color-region buf
 				   (caddr e)
 				   (car e)
@@ -181,7 +181,7 @@ region."
 			 (point-at-bol)))
 	(setq end (progn (goto-char (cadr elt))
 			 (point))))
-      (message (format "Highlighting %d to %d" beg end))
+      ;(message (format "Highlighting %d to %d" beg end))
       (clang-faces-fontify-region-worker beg end buf)
       (setq clang-faces-valid-pt end))))
 
@@ -210,13 +210,13 @@ region."
   (process-send-string proc "\nREPARSE\n")
   (process-send-string 
    proc
-   (concat bufstr clang-faces-output-finished-marker "\n")))
+   (concat bufstr "\n" clang-faces-output-finished-marker "\n")))
 
 (defun clang-faces-request-hilight-worker (proc)
   (with-current-buffer (process-buffer proc)
     (when (and (eq clang-faces-status 'idle)
 	       clang-faces-hilight-request-queue)
-      (message "Reparse request!")
+      ;(message "Reparse request!")
       (setq clang-faces-status 'busy)
       ;;(setq clang-faces-last-tick (buffer-modified-tick))
       (clang-faces-proc-send-reparse 
@@ -227,7 +227,7 @@ region."
   `(if ,n (1- ,n) nil))
 
 (defun clang-faces-process-filter (process output)
-  ;;(message "Inside Process Filter!")
+  ;(message "Inside Process Filter!")
   (setq clang-faces-fontification-data-incoming
 	(concat clang-faces-fontification-data-incoming
 		(substring output 0 
@@ -242,7 +242,7 @@ region."
     
 
     (if off (progn
-	      (message "End of Output Detected!")
+	      ;(message "End of Output Detected!")
 	      (setq clang-faces-status 'idle
 		    clang-faces-fontification-data 
 		    clang-faces-fontification-data-incoming
@@ -252,7 +252,9 @@ region."
 	      (clang-faces-on-hilight-returns process)
 
 	      (if clang-faces-hilight-request-queue
-		  (clang-faces-request-hilight-worker process))
+		  (progn
+		    ;(message "Queue still has items... Reparsing...")
+		    (clang-faces-request-hilight-worker process)))
 
 	      ;(clang-faces-fontify-queue)
 	      ))
@@ -350,9 +352,9 @@ region."
 
 (defun clang-faces-after-change (beg end oldlen)
   (when (eq clang-faces-current-change 'insertion)
-    (message (format
-	      "Inserted text: %s" 
-	      (buffer-substring-no-properties beg end)))
+    ;; (message (format
+    ;; 	      "Inserted text: %s" 
+    ;; 	      (buffer-substring-no-properties beg end)))
     (if clang-faces-delta-beg
 	;; Delta Start Region already exists... check for stop char
 	(when (and clang-faces-delta-beg
@@ -368,7 +370,7 @@ region."
       (setq clang-faces-delta-beg beg)))
 
   (when (eq clang-faces-current-change 'deletion)
-    (message "Deletion!")
+    ;;(message "Deletion!")
 
 ))
 
@@ -383,6 +385,9 @@ region."
 ;;   (let ((inhibit-modification-hooks t))
 ;;     ad-do-it))
 ;; (ad-deactivate 'ac-update-greedy)
+
+(defun clang-faces-kill-buffer () 
+  (clang-faces-mode-disable))
 
 (defun clang-faces-mode-default-hook ()
   ;; (if clang-faces-reparse-timer
@@ -455,6 +460,7 @@ region."
   ;;(add-hook 'post-command-hook 'clang-faces-post-command t t)
   (add-hook 'before-change-functions 'clang-faces-before-change nil t)
   (add-hook 'after-change-functions 'clang-faces-after-change nil t)
+  ;(add-hook 'kill-buffer-hook 'clang-faces-kill-buffer nil t)
   (setq clang-faces-delta-beg (point-min))
   (setq clang-faces-delta-end (point-max))
   (setq clang-faces-valid-pt (point-max))
