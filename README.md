@@ -22,18 +22,20 @@ Intelligent syntax higlighting through libclang w/emacs!
 
 -   Clone the repository
 
--   mkdir build; cd build
-
--   cmake ..
-
--   make
+    mkdir build; cd build
+    cmake ..
+    make
 
 ## Emacs Setup
 
-(setq clang-faces-client-exec
-"~/path/clang-faces/build/emacs-clang-syntaxhl")
+    (setq clang-faces-client-exec "~/path/clang-faces/build/emacs-clang-syntaxhl")
+    (add-to-list 'c-mode-common-hook #'(lambda () (clang-faces-mode t)))
 
-M-x clang-faces-mode
+or enable/disable manually with:
+
+<p class="verse">
+M-x clang-faces-mode <br/>
+</p>
 
 ## How It Works
 
