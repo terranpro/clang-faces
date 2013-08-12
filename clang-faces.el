@@ -141,28 +141,6 @@
 	   ;;if (and (>= s start) (<= s win-end))
 	   collect elem))))
 
-(defun clang-faces-fontify-queue ()
-  (unwind-protect
-      (mapcar #'(lambda (e) 
-		  (message (format "Fontifying %d -> %d" (car e) (cadr e)))
-		  (clang-faces-fontify-region-worker (car e) (cadr e)
-						     (caddr e)
-						     clang-faces-min-point))
-	      clang-faces-fontify-region-queue)
-    (setq clang-faces-fontify-region-queue nil)
-    (setq clang-faces-min-point 1000000)))
-
-(defun clang-faces-fontify-region (&optional start end verbose)
-  "Puts all fontification requests into a queue to be fontified
-later when clang-faces process finishes and returns new info."
-  ;; (message (format "Fontify Region! %d %d" start end))
-
-  ;; (setq clang-faces-fontify-region-queue 
-  ;; 	(append 
-  ;; 	 clang-faces-fontify-region-queue
-  ;; 	 (list (list start end (current-buffer)))))
-  (font-lock-default-fontify-region start end verbose))
-
 (defun clang-faces-fontify-buffer (&optional buf)
   (interactive)
   (clang-faces-fontify-region-worker (point-min) (point-max) 
@@ -175,18 +153,23 @@ element off the hilight queue and attempts to fontify the delta
 region."
   (let ((buf (with-current-buffer (process-buffer proc)
 	       clang-faces-current-buffer))
+	;; Experimental: without this, we might make font-lock overwork?
+	(inhibit-point-motion-hooks t)
 	elt beg end)
-    (setq elt (pop clang-faces-hilight-request-queue))
-    (when elt
-      (save-excursion
-	(set-buffer buf)
-	(setq beg (progn (goto-char (car elt))
-			 (point-at-bol)))
-	(setq end (progn (goto-char (cadr elt))
-			 (point))))
-      ;(message (format "Highlighting %d to %d" beg end))
-      (clang-faces-fontify-region-worker beg end buf)
-      (setq clang-faces-valid-pt end))))
+    (with-current-buffer buf
+      (setq elt (pop clang-faces-hilight-request-queue))
+      (when elt
+	(setq beg (min 
+		   (car elt)
+		   (save-excursion (goto-char (car elt)) (point-at-bol))))
+	(setq end (cadr elt))
+	(message (format "Highlighting %d to %d" beg end))
+	
+	(save-excursion
+	  (clang-faces-fontify-region-worker beg end buf)	
+	  ;(font-lock-fontify-region beg end)
+	  )
+	(setq clang-faces-valid-pt end)))))
 
 (defun clang-faces-parse-incoming-data (proc)
   (setq 
@@ -214,44 +197,47 @@ region."
    (concat bufstr "\n" clang-faces-output-finished-marker "\n")))
 
 (defun clang-faces-request-hilight-worker (proc)
-  (with-current-buffer clang-faces-current-buffer
-    (when (and (eq clang-faces-status 'idle)
-	       clang-faces-hilight-request-queue)
-      ;(message "Reparse request!")
-      (setq clang-faces-status 'busy)
-      ;;(setq clang-faces-last-tick (buffer-modified-tick))
-      (clang-faces-proc-send-reparse 
-       proc (buffer-substring-no-properties (point-min) 
-					    (point-max))))))
+  (let ((srcbuf (with-current-buffer (process-buffer proc)
+		  clang-faces-current-buffer)))
+    (with-current-buffer srcbuf
+      (when (and (eq clang-faces-status 'idle)
+		 clang-faces-hilight-request-queue)
+					;(message "Reparse request!")
+	(setq clang-faces-status 'busy)
+	;;(setq clang-faces-last-tick (buffer-modified-tick))
+	(clang-faces-proc-send-reparse 
+	 proc (buffer-substring-no-properties (point-min) 
+					      (point-max)))))))
 
 ;; (defmacro safe1- (n)
 ;;   `(if ,n (1- ,n) nil))
 
 (defun clang-faces-process-filter (process output)
 					;(message "Inside Process Filter!")
-  (let ((off (with-current-buffer (process-buffer process)
-	       (goto-char (point-max))
-	       (insert output)
-	       (goto-char (point-min))
-	       (search-forward-regexp
-		clang-faces-output-finished-regexp (point-max) t))))
+  (with-current-buffer (process-buffer process)
+    (let ((srcbuf clang-faces-current-buffer)
+	  (off (progn
+		(goto-char (point-max))
+		(insert output)
+		(goto-char (point-min))
+		(search-forward-regexp
+		 clang-faces-output-finished-regexp (point-max) t))))
 
-    (if off (progn
-	      ;(message "End of Output Detected!")
-	      (setq clang-faces-status 'idle)
-	      (clang-faces-parse-incoming-data process)
+     (if off (with-current-buffer srcbuf
+	       (setq clang-faces-status 'idle)
+	       (clang-faces-parse-incoming-data process)
 	      
-	      (clang-faces-on-hilight-returns process)
+	       (clang-faces-on-hilight-returns process)
 
-	      (if clang-faces-hilight-request-queue
-		  (progn
-		    ;(message "Queue still has items... Reparsing...")
-		    (clang-faces-request-hilight-worker process))
-		(font-lock-fontify-buffer))
-
-	      ;(clang-faces-fontify-queue)
-	      ))
-    t))
+	       (if clang-faces-hilight-request-queue
+		   (progn
+		     (clang-faces-request-hilight-worker process))
+		 (save-excursion
+		  (font-lock-fontify-region (or clang-faces-delta-beg
+						(point-min))
+					    (or clang-faces-delta-end
+						(point-min)))))))
+     t)))
 
 (defun clang-faces-kill-process ()
   (when clang-faces-process
@@ -305,6 +291,7 @@ region."
   )
 
 (defun clang-faces-request-hilight ()
+  (message "Requesting Hilight!")
   (let* ((beg (or clang-faces-delta-beg (point-min)))
 	 (end (or clang-faces-delta-end (point-max)))
 	 (entry (list beg end))
@@ -349,28 +336,30 @@ region."
      er))
 
 (defun clang-faces-after-change (beg end oldlen)
-  (when (eq clang-faces-current-change 'insertion)
-    ;; (message (format
-    ;; 	      "Inserted text: %s" 
-    ;; 	      (buffer-substring-no-properties beg end)))
-    (if clang-faces-delta-beg
-	;; Delta Start Region already exists... check for stop char
-	(when (and clang-faces-delta-beg
-		   (not (null this-command))
-		   (memls "(){};<>:"
-			  (buffer-substring-no-properties beg end)))
-	  ;; Stop character found, mark end of delta region
-	  (setq clang-faces-delta-end end)
-	  ;(pp (c-extend-after-change-region beg end oldlen))
-	  (setq clang-faces-valid-pt
-		(min clang-faces-delta-beg
-		     clang-faces-valid-pt
-		     (save-excursion
-		       (c-beginning-of-defun)
-		       (point))))
-	  (clang-faces-request-hilight))
-      ;; Delta Start nil - mark this as the start of delta reg
-      (setq clang-faces-delta-beg beg)))
+  (ignore-errors
+   (when (eq clang-faces-current-change 'insertion)
+     ;; (message (format
+     ;; 	       "Inserted text: %s" 
+     ;; 	       (buffer-substring-no-properties beg end)))
+     (if clang-faces-delta-beg
+	 ;; Delta Start Region already exists... check for stop char
+	 (when (and clang-faces-delta-beg
+		    (not (null this-command))
+		    (memls "(){};<>:"
+			   (buffer-substring-no-properties beg end)))
+	   ;; Stop character found, mark end of delta region
+	   (setq clang-faces-delta-end end)
+					;(pp (c-extend-after-change-region beg end oldlen))
+	   (setq clang-faces-valid-pt
+		 (min clang-faces-delta-beg
+		      clang-faces-valid-pt
+		      (save-match-data
+			(save-excursion
+			  (c-beginning-of-defun)
+			  (point)))))
+	   (clang-faces-request-hilight))
+       ;; Delta Start nil - mark this as the start of delta reg
+       (setq clang-faces-delta-beg beg))))
 
   (when (eq clang-faces-current-change 'deletion)
     ;;(message "Deletion!")
