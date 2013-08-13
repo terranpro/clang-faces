@@ -62,33 +62,40 @@
 ;(defface )
 (defface clang-faces-keyword-face
   '((t :inherit font-lock-keyword-face))
-  "")
+  ""
+  :group 'clang-faces)
 
 (defface clang-faces-literal-face
   '((t :inherit font-lock-string-face))
-  "")
+  ""
+  :group 'clang-faces)
 
 (defface clang-faces-type-face
   '((t :inherit font-lock-type-face))
-  "")
+  ""
+  :group 'clang-faces)
 
 (defface clang-faces-variable-name-face
   '((t :inherit font-lock-variable-name-face))
-  "")
+  ""
+  :group 'clang-faces)
 
 (defface clang-faces-comment-face
   '((t :inherit font-lock-comment-face))
-  "")
+  ""
+  :group 'clang-faces)
 
 (defface clang-faces-function-name-face
   '((t :inherit font-lock-function-name-face))
-  "")
+  ""
+  :group 'clang-faces)
 (set-face-attribute 'clang-faces-function-name-face nil 
 		    :inherit font-lock-function-name-face)
 
 (defface clang-faces-namespace-face
   '((t :inherit warning))
-  "")
+  ""
+  :group 'clang-faces)
 (set-face-attribute 'clang-faces-namespace-face nil 
 		    :inherit font-lock-type-face
 		    :bold t)
