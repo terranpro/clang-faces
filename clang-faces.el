@@ -186,14 +186,26 @@ region."
      (let ((regex clang-faces-output-regex)
 	   pdata)
        (while (search-forward-regexp regex (point-max) t)
+	 
+	 
 	 (setq pdata
-	       (append
-		pdata
-		(list
-		 (list
-		  (1+ (string-to-number (match-string 1)))
-		  (1+ (string-to-number (match-string 2)))
-		  (match-string 3))))))
+	       ;; (append
+	       ;; 	pdata
+	       ;; 	(list
+	       ;; 	 (list
+	       ;; 	  (1+ (string-to-number (match-string 1)))
+	       ;; 	  (1+ (string-to-number (match-string 2)))
+	       ;; 	  (match-string 3))))
+
+	       ;; ;; I think this is more efficient+faster with what
+	       ;; ;; little I could ascertain from `profile-report'.
+	       (nconc pdata
+	       	      (list
+	       	       (list
+	       		(1+ (string-to-number (match-string 1)))
+	       		(1+ (string-to-number (match-string 2)))
+	       		(match-string 3))))
+))
        (erase-buffer)
        pdata))))
 
@@ -246,12 +258,16 @@ region."
 						(point-min)))))))
      t)))
 
+(defun clang-faces-get-process-parent-buffer (proc)
+  (when proc
+    (process-buffer proc)))
+
 (defun clang-faces-kill-process ()
   (when clang-faces-process
-    (let ((pbuf (process-buffer clang-faces-process)))
-      (process-kill-without-query clang-faces-process)
-      (kill-buffer pbuf))
-    (setq clang-faces-process nil)))
+    (message "Sending kill-process to clang-faces")
+    (ignore-errors (kill-buffer (process-buffer clang-faces-process))
+		   (kill-process clang-faces-process)
+		   (setq clang-faces-process nil))))
 
 (defun clang-faces-relaunch-process ()
   (interactive)
@@ -351,7 +367,7 @@ region."
      (if clang-faces-delta-beg
 	 ;; Delta Start Region already exists... check for stop char
 	 (when (and clang-faces-delta-beg
-		    (not (null this-command))
+		    ;(not (null this-command))
 		    (memls "(){};<>:"
 			   (buffer-substring-no-properties beg end)))
 	   ;; Stop character found, mark end of delta region
@@ -385,14 +401,16 @@ region."
 ;;     ad-do-it))
 ;; (ad-deactivate 'ac-update-greedy)
 
-(defun clang-faces-kill-buffer () 
-  (clang-faces-mode-disable))
+(defun clang-faces-kill-buffer ()
+  (message "Killing Clang-Faces...")
+  (let ((buf (current-buffer)))
+    (message "Current buffer: %s" buf)
+    (clang-faces-mode-disable)))
 
 (defun clang-faces-mode-default-hook ()
   ;; (if clang-faces-reparse-timer
   ;;     (cancel-timer clang-faces-reparse-timer))
-  (if clang-faces-fontify-timer
-      (cancel-timer clang-faces-fontify-timer))
+  
 
   (setq clang-faces-delta-beg nil)
   (setq clang-faces-delta-end nil)
@@ -405,26 +423,29 @@ region."
   (setq clang-faces-status 'idle))
 
 (defun clang-faces-mode-disable ()
-  (clang-faces-kill-process)
   ;; (setq font-lock-fontify-buffer-function
   ;; 	(function font-lock-default-fontify-buffer))
   ;; (setq font-lock-fontify-region-function
   ;; 	(function font-lock-default-fontify-region))
   (setq clang-faces-mode nil)
+  (when clang-faces-fontify-timer
+    (message "Cancelling Clang Faces Fontify Timer")
+    (cancel-timer clang-faces-fontify-timer))
   
   ;;(remove-hook 'post-command-hook 'clang-faces-post-command t)
   (remove-hook 'before-change-functions 'clang-faces-before-change)
   (remove-hook 'after-change-functions 'clang-faces-after-change)
-
+  (clang-faces-kill-process)
   ;; (font-lock-mode -1)
   ;; (setq font-lock-defaults nil)
   ;; (font-lock-mode 1)
   (message "Clang Faces Disabled"))
 
 (defun clang-faces-mode-enable ()
+  (message "Enabling Clang Faces...")
   (clang-faces-relaunch-process)
 
-  (font-lock-mode -1)
+  ;;(font-lock-mode -1)
   ;; (setq font-lock-defaults
   ;; 	`(("auto")
   ;; 	  nil
@@ -439,15 +460,14 @@ region."
   ;; (setq font-lock-fontify-region-function
   ;; 	(function clang-faces-fontify-region))
 
-  (font-lock-mode 1)
+  ;;(font-lock-mode 1)
   (setq clang-faces-current-buffer (current-buffer))
-  (setq clang-faces-fontify-timer
-  	;; (run-with-idle-timer 5 5 (function clang-faces-fontify-buffer)
-	;; 		     (current-buffer))
-	(run-with-idle-timer 5 5 (function clang-faces-request-hilight)
-			     ;(current-buffer)
-			     )
-)
+  (and (not clang-faces-fontify-timer)
+       (setq clang-faces-fontify-timer
+	     ;; (run-with-idle-timer 5 5 (function clang-faces-fontify-buffer)
+	     ;; 		     (current-buffer))
+	     (run-with-idle-timer 5 5 (function clang-faces-request-hilight)))
+       (message "Refontify Timer Started"))
   ;; (setq clang-faces-reparse-timer
   ;; 	(run-with-idle-timer 5 2 (function 
   ;; 				  clang-faces-process-reparse-request)
