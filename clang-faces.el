@@ -252,10 +252,14 @@ region."
 		   (progn
 		     (clang-faces-request-hilight-worker process))
 		 (save-excursion
-		  (font-lock-fontify-region (or clang-faces-delta-beg
-						(point-min))
-					    (or clang-faces-delta-end
-						(point-min)))))))
+		   (message (format "Current buffer: %s\nFormatting buffer: %s"  
+				    
+				    (or (current-buffer) "") 
+				    (or srcbuf "")))
+		   (font-lock-fontify-region (or clang-faces-delta-beg
+						 (point-min))
+					     (or clang-faces-delta-end
+						 (point-min)))))))
      t)))
 
 (defun clang-faces-get-process-parent-buffer (proc)
@@ -380,7 +384,9 @@ region."
 			(save-excursion
 			  (c-beginning-of-defun)
 			  (point)))))
-	   (clang-faces-request-hilight))
+	   (clang-faces-request-hilight)
+	   ;; TODO TEMP!!! TESTING
+	   (setq clang-faces-delta-end nil))
        ;; Delta Start nil - mark this as the start of delta reg
        (setq clang-faces-delta-beg beg))))
 
