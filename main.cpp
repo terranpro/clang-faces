@@ -21,13 +21,14 @@
  * 
  * Author: Brian Fransioli <assem@terranpro.org>
  * Created: Tue Jul 18:55:32 KST 2013
- * Last modified: Mon Aug 12 14:21:02 KST 2013
+ * Last modified: Thu Aug 15 23:53:20 KST 2013
  */
 
 #include <iostream>
 #include <vector>
 #include <string>
 #include <iterator>
+#include <memory>
 
 #include "clang-c/Index.h"
 
@@ -297,6 +298,39 @@ std::vector<char> ReparseSource()
   return buffer;
 }
 
+struct ArgList 
+{
+  std::vector<std::string> args;
+  std::unique_ptr<const char *> c_args;
+  
+  ArgList(int argc, char **argv)
+    : args( argv, argv+argc ), c_args( new const char *[argc] )
+  { build_c_args(); }
+
+  ArgList( std::vector<std::string> vargs )
+    : args( vargs ), c_args( new const char *[ args.size() ] )
+  { build_c_args(); }
+    
+  void build_c_args()
+  {
+    auto i = 0u;
+    for ( auto s : args )
+      std::cout << s << " ";
+    std::cout << std::endl;
+    
+    for ( auto &s : args )
+      (c_args.get())[ i++ ] = s.c_str();
+  }
+  
+  operator const char **()
+  {
+    return c_args.get();
+  }
+
+  std::size_t count() const
+  { return args.size(); }
+};
+    
 struct TUnit 
 {
   CXIndex index;
@@ -309,7 +343,7 @@ struct TUnit
   
   TUnit( CXIndex idx, std::string file )
     : index( idx ), filename(  file )
-  {}
+  { std::cout << "File: " << filename << "\n"; }
 
   ~TUnit()
   { clang_disposeTranslationUnit( unit ); }
@@ -320,6 +354,10 @@ struct TUnit
   {
     orig_argc = argc;
     orig_argv = argv;
+    for ( auto i = 0; i < argc; ++i )
+      std::cout << argv[i] << " ";
+    std::cout << "\n";
+    
     unit = clang_parseTranslationUnit( index,
 				       filename.c_str(),
 				       argv,
@@ -355,13 +393,20 @@ struct TUnit
 int main(int argc, char *argv[])
 {
   auto index = clang_createIndex(0, 0);
-  char const *args[] = { "-x", "c++", "-std=c++11" };
-  auto arg_count = sizeof( args ) / sizeof( *args );
-  auto filename = argv[1];
-  
+  std::vector<std::string> default_args = { {"-x"}, {"c++"}, {"-std=c++11"} };
+  std::string filename;
+  ArgList arglist( default_args );
+
+  if ( argc > 1 ) {
+    arglist = ArgList( argc - 2, argv + 1 );
+    filename = argv[argc - 1];
+  } else {
+    filename = argv[1];
+  }
+      
   TUnit tu( index, filename );
   
-  if ( !tu.parse( arg_count, args ) ) {
+  if ( !tu.parse( arglist.count(), arglist ) ) {
     std::cout << "Translation Unit Initial Parse Failed!\n";
   }
 
@@ -371,7 +416,7 @@ int main(int argc, char *argv[])
     if ( input == "REPARSE" ) {
       filebuffer = ReparseSource();
 
-      CXUnsavedFile unsaved_file = { filename,
+      CXUnsavedFile unsaved_file = { filename.c_str(),
 				     filebuffer.data(),
 				     filebuffer.size() };
 

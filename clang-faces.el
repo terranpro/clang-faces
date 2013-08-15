@@ -286,6 +286,8 @@ region."
 	 (outbuf (generate-new-buffer-name "clang-faces"))
 	 (cmd (concat clang-faces-client-exec 
 		      " "
+		      (or ac-clang-cflags "")
+		      " "
 		      file)))
     (setq clang-faces-process
 	  (start-process "clang-faces" outbuf clang-faces-client-exec
