@@ -320,7 +320,7 @@ region."
   )
 
 (defun clang-faces-request-hilight ()
-  (message "Requesting Hilight!")
+  (message (format "Requesting Hilight in %s!" (current-buffer)))
   (let* ((beg (or clang-faces-delta-beg (point-min)))
 	 (end (or clang-faces-delta-end (point-max)))
 	 (entry (list beg end))
@@ -330,6 +330,10 @@ region."
 		  (list entry)))
     (setq clang-faces-delta-beg nil)
     (clang-faces-request-hilight-worker proc)))
+
+(defun clang-faces-idle-request-hilight (buffer)
+  (with-current-buffer buffer
+    (clang-faces-request-hilight)))
 
 (defun clang-faces-before-change (beg end)
   (if (eq (- end beg) 0)
@@ -474,7 +478,9 @@ region."
        (setq clang-faces-fontify-timer
 	     ;; (run-with-idle-timer 5 5 (function clang-faces-fontify-buffer)
 	     ;; 		     (current-buffer))
-	     (run-with-idle-timer 5 5 (function clang-faces-request-hilight)))
+	     (run-with-idle-timer 5 5
+				  (function clang-faces-idle-request-hilight)
+				  clang-faces-current-buffer))
        (message "Refontify Timer Started"))
   ;; (setq clang-faces-reparse-timer
   ;; 	(run-with-idle-timer 5 2 (function 
