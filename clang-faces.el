@@ -323,7 +323,6 @@ region."
   )
 
 (defun clang-faces-request-hilight ()
-  (message (format "Requesting Hilight in %s!" (current-buffer)))
   (let* ((beg (or clang-faces-delta-beg (point-min)))
 	 (end (or clang-faces-delta-end (point-max)))
 	 (entry (list beg end))
@@ -332,10 +331,22 @@ region."
 	  (append clang-faces-hilight-request-queue
 		  (list entry)))
     (setq clang-faces-delta-beg nil)
+    (setq clang-faces-last-tick (buffer-chars-modified-tick))
+    (message (format "Requesting Hilight in %s on %d->%d!"
+		     (current-buffer) beg end))
     (clang-faces-request-hilight-worker proc)))
 
 (defun clang-faces-idle-request-hilight (buffer)
   (with-current-buffer buffer
+    (let ((tick (buffer-chars-modified-tick)))
+      (unless (eq tick clang-faces-last-tick)
+	(setq clang-faces-last-tick tick)
+	(clang-faces-request-hilight)))))
+
+(defun clang-faces-force-request-hilight ()
+  (interactive)
+  (let ((clang-faces-delta-beg (point-min))
+	(clang-faces-delta-end (point-max)))
     (clang-faces-request-hilight)))
 
 (defun clang-faces-before-change (beg end)
@@ -350,6 +361,7 @@ region."
 )
 
 (defmacro mems (elt str)
+  "Return TRUE if the character ELT is present in the string STR."
   `(let ((r nil)
 	 (n 0)
 	 (len (length ,str)))
@@ -361,6 +373,7 @@ region."
      r))
 
 (defmacro memls (elts str)
+  "Return TRUE if the string ELTS contains any character in the string STR."
   `(let ((er nil)
 	 (en 0)
 	 (elen (length ,elts)))
