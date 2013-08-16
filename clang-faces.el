@@ -22,15 +22,17 @@
 ;; Fantastic syntax highlighting directly from the horses mouth (clang).
 ;; 
 ;;; Usage:
-;; `clang-faces-mode' after setting `clang-faces-client-exec' and Enjoy!
+;; `clang-faces-mode' after setting `clang-faces-exec' 
+;;
+;; Enjoy!
 ;;
 ;;; TODO: 
 ;; Buggy =(
 ;;
 ;;; Code:
 
-(defvar clang-faces-client-exec 
-  "~/code/clang-faces/build/emacs-clang-syntaxhl")
+(defvar clang-faces-exec 
+  "~/code/clang-faces/build/clang-faces")
 
 (defvar-local clang-faces-process nil
   "Process object to the clang-faces executable")
@@ -291,7 +293,7 @@ region."
     (setq clang-faces-process
 	  (apply 'start-process
 		 "clang-faces"
-		 outbuf clang-faces-client-exec
+		 outbuf clang-faces-exec
 		 cmdargs))
     (set-process-filter clang-faces-process 
 			(function clang-faces-process-filter))

@@ -1,5 +1,5 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 2.6)
-PROJECT(emacs-clang-syntaxhl)
+PROJECT(clang-faces)
 
 SET( PREFIX ${CMAKE_INSTALL_PREFIX} )
 
