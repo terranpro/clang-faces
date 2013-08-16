@@ -284,14 +284,15 @@ region."
 	 (file (or (buffer-file-name)
 		   (concat default-directory (buffer-name buf))))
 	 (outbuf (generate-new-buffer-name "clang-faces"))
-	 (cmd (concat clang-faces-client-exec 
-		      " "
-		      (or ac-clang-cflags "")
-		      " "
-		      file)))
+	 (cmdargs (append ac-clang-cflags
+			  (list file))))
+    (message (format "Launching clang-faces with args: %s" 
+		     (mapconcat 'identity cmdargs " ")))
     (setq clang-faces-process
-	  (start-process "clang-faces" outbuf clang-faces-client-exec
-			 file))
+	  (apply 'start-process
+		 "clang-faces"
+		 outbuf clang-faces-client-exec
+		 cmdargs))
     (set-process-filter clang-faces-process 
 			(function clang-faces-process-filter))
     (set-process-query-on-exit-flag clang-faces-process nil)
