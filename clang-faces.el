@@ -57,6 +57,9 @@
 (defvar-local clang-faces-valid-pt 0)
 (defvar-local clang-faces-current-change nil)
 
+(defvar-local clang-faces-dirty-id 0)
+(defvar-local clang-faces-dirty-current 0)
+
 (defconst clang-faces-output-finished-marker "!!!!$$$$!!!!")
 (defconst clang-faces-output-finished-regexp 
   (concat "^" (regexp-quote clang-faces-output-finished-marker)))
@@ -128,6 +131,7 @@
   (let ((type-face (or (cdr (assoc type clang-faces-type-face-alist))
 		       'default)))
     (put-text-property start end 'font-lock-face type-face buf)
+    (remove-text-properties start (1+ end) '(dirty) buf)
 ;    (put-text-property start end 'fontified nil buf)
     ))
 
@@ -146,7 +150,9 @@
 	   for e = (cadr elem)
 	   with max = (or hardstoppt (1+ (buffer-size buf)))
 	   with win-end = (window-end (get-buffer-window buf))
-	   if (and (>= s start) (<= s end) (<= s max) (<= e max))
+	   if (and (>= s start) (<= s end) (<= s max) (<= e max)
+		   (get-text-property s 'dirty buf) 
+		   (get-text-property e 'dirty buf))
 	   ;;if (and (>= s start) (<= s win-end))
 	   collect elem))))
 
@@ -154,6 +160,94 @@
   (interactive)
   (clang-faces-fontify-region-worker (point-min) (point-max) 
 				     (or buf (current-buffer))))
+
+
+(defun clang-faces-next-dirty-region ()
+  (save-excursion
+    (let ((beg (next-single-property-change (point) 'dirty))
+	  (end (next-single-property-change (point) 'dirty))
+	  this-id this-dirty-pt res)
+      (while (and beg end (not res))
+	(setq this-id (get-text-property beg 'dirty))
+	(setq this-dirty-pt (get-text-property beg 'dirtypt))
+	(setq end (next-single-property-change beg 'dirty))
+	(if this-id 
+	    (setq res (list this-id this-dirty-pt beg (or end (point-max))))
+	  (setq beg end)))
+      res)))
+
+(defun clang-faces-reset-dirty-id-after (pos oldid newid)
+  (save-excursion
+    (let (reg) 
+      (while (setq reg (clang-faces-next-dirty-region))
+	(let ((thisid (car reg))
+	      (beg (cadr reg))
+	      (end (caddr reg)))
+	  (when (= oldid thisid)
+	    (set-text-properties beg end (list 'dirty newid)))
+	  (goto-char end))))))
+
+;(defun clang-faces-)
+(defun clang-faces-update-table-entry (tbl dirtypt parsed-data)
+  (let ((res nil))
+    (loop for entry in parsed-data
+	 for beg = (car entry)
+	 for end = (cadr entry)
+	 for this-res = (aget clang-faces-type-face-alist (caddr entry))
+	 ;do (message (format "%s Comparing %d > %d >= %d" this-res end dirtypt beg))
+	 if (and (>= dirtypt beg) (< dirtypt end))
+	 do (setq res this-res)
+	 until res)
+    
+    (when res
+      (puthash dirtypt res tbl))))
+
+;; ;; Test clang-faces-update-table-entry
+;; (let ((parsed-data (list (list 1 10 "Punctuation")
+;; 			 (list 10 20 "Function")
+;; 			 (list 20 30 "Namespace")
+;; 			 (list 30 40 "Keyword")))
+;;       (tbl (make-hash-table))
+;;       (key 39))
+;;   (puthash key "Punctuation" tbl)
+;;   (clang-faces-update-table-entry tbl key parsed-data)
+;;   (maphash #'(lambda (key val) (message (format "%d => %s" key val))) tbl)
+;;   ;(gethash key tbl)
+;;   )
+
+;; ;; General testing of maphash for sortedness (result: not sorted)
+;; (let ((tbl (make-hash-table)))
+;;   (loop for x from 15 downto 1
+;; 	do
+;; 	(puthash x "Puncutation" tbl))
+
+;;   (maphash #'(lambda (key val) (message (format "%d => %d" key val))) tbl))
+
+
+;;(aget clang-faces-type-face-alist "Punctuation")
+
+(defun clang-faces-update-table (tbl)
+  (maphash #'(lambda (key val)
+	       (clang-faces-update-table-entry tbl key clang-faces-parsed-data))))
+
+(defun clang-faces-update-dirty-entries-for-id (dirty-id dirty-pt-table)
+  (save-excursion
+    (goto-char (point-min))
+    (let (dreg this-did this-beg this-end)
+     (while (setq dreg (clang-faces-next-dirty-region))
+       (setq this-did (car dreg))
+       (setq this-dpt (cadr dreg))
+       (setq this-beg (caddr dreg))
+       (setq this-end (cadddr dreg))
+
+       (while (< this-beg this-end)
+	 (goto-char this-beg)
+	 (when (= dirty-id this-did)
+	   (set-text-properties this-beg (1+ this-beg) (list 'font-lock-face (gethash this-dpt tbl))))
+	 (setq this-beg (1+ this-beg)))
+;; TODO: finish this amazing shit~! and make test harness!
+)))
+  )
 
 (defun clang-faces-on-hilight-returns (proc)
   "To be called by the process filter when it has collected all
@@ -164,21 +258,27 @@ region."
 	       clang-faces-current-buffer))
 	;; Experimental: without this, we might make font-lock overwork?
 	(inhibit-point-motion-hooks t)
-	elt beg end)
+	elt beg end dirty-id dirty-pt-table)
     (with-current-buffer buf
       (setq elt (pop clang-faces-hilight-request-queue))
-      (when elt
-	(setq beg (min 
-		   (car elt)
-		   (save-excursion (goto-char (car elt)) (point-at-bol))))
-	(setq end (cadr elt))
-	(message (format "Highlighting %d to %d" beg end))
-	
-	(save-excursion
-	  (clang-faces-fontify-region-worker beg end buf)	
-	  ;(font-lock-fontify-region beg end)
-	  )
-	(setq clang-faces-valid-pt end)))))
+      (message (format "dirty-id = %d dirty-current = %d"
+		       (car elt) clang-faces-dirty-current))
+      (when (and elt
+		 (setq dirty-id (car elt))
+		 (setq dirty-pt-table (cadr elt))
+		 ;(= clang-faces-dirty-current dirty-id)
+		 )
+	(message (format "Highlighting for dirty id: %d" dirty-id))
+	(clang-faces-update-table dirty-pt-table)
+	(clang-faces-update-dirty-entries-for-id dirty-id dirty-pt-table)
+
+	;; ;; TODO: should we change this?!
+	;; (save-excursion
+	;;   (clang-faces-fontify-region-worker (point-min) (point-max) buf)
+	;;   ;(font-lock-fontify-region beg end)
+	;;   )
+
+))))
 
 (defun clang-faces-parse-incoming-data (proc)
   (setq 
@@ -254,14 +354,13 @@ region."
 		   (progn
 		     (clang-faces-request-hilight-worker process))
 		 (save-excursion
-		   (message (format "Current buffer: %s\nFormatting buffer: %s"  
+		   (message 
+		    (format "Current buffer: %s\nFormatting buffer: %s"  
 				    
 				    (or (current-buffer) "") 
 				    (or srcbuf "")))
-		   (font-lock-fontify-region (or clang-faces-delta-beg
-						 (point-min))
-					     (or clang-faces-delta-end
-						 (point-min)))))))
+		   (font-lock-fontify-region (point-min)
+					     (point-min))))))
      t)))
 
 (defun clang-faces-get-process-parent-buffer (proc)
@@ -322,18 +421,20 @@ region."
   ;(setq clang-faces-parsed-data (clang-faces-adjust-delta))
   )
 
+(defvar-local clang-faces-dirty-pt-table (make-hash-table))
+
 (defun clang-faces-request-hilight ()
-  (let* ((beg (or clang-faces-delta-beg (point-min)))
-	 (end (or clang-faces-delta-end (point-max)))
-	 (entry (list beg end))
+  (let* (;(entry (list beg end))
+	 (entry (list clang-faces-dirty-id clang-faces-dirty-pt-table))
 	 (proc clang-faces-process))
     (setq clang-faces-hilight-request-queue
 	  (append clang-faces-hilight-request-queue
 		  (list entry)))
-    (setq clang-faces-delta-beg nil)
-    (setq clang-faces-last-tick (buffer-chars-modified-tick))
-    (message (format "Requesting Hilight in %s on %d->%d!"
-		     (current-buffer) beg end))
+    (message (format "Requesting Hilight in %s w/id %d !"
+		     (current-buffer) clang-faces-dirty-id))
+    ;; reset hash table
+    (setq clang-faces-dirty-pt-table (make-hash-table))
+
     (clang-faces-request-hilight-worker proc)))
 
 (defun clang-faces-idle-request-hilight (buffer)
@@ -384,38 +485,33 @@ region."
 	 (setq en (1+ en))))
      er))
 
+(defun clang-faces-reset-dirty-id ()
+  (setq clang-faces-dirty-id (1+ clang-faces-dirty-id)))
+
 (defun clang-faces-after-change (beg end oldlen)
   (ignore-errors
-   (when (eq clang-faces-current-change 'insertion)
-     ;; (message (format
-     ;; 	       "Inserted text: %s" 
-     ;; 	       (buffer-substring-no-properties beg end)))
-     (if clang-faces-delta-beg
-	 ;; Delta Start Region already exists... check for stop char
-	 (when (and clang-faces-delta-beg
-		    ;(not (null this-command))
-		    (memls "(){};<>:"
-			   (buffer-substring-no-properties beg end)))
-	   ;; Stop character found, mark end of delta region
-	   (setq clang-faces-delta-end end)
-					;(pp (c-extend-after-change-region beg end oldlen))
-	   (setq clang-faces-valid-pt
-		 (min clang-faces-delta-beg
-		      clang-faces-valid-pt
-		      (save-match-data
-			(save-excursion
-			  (c-beginning-of-defun)
-			  (point)))))
-	   (clang-faces-request-hilight)
-	   ;; TODO TEMP!!! TESTING
-	   (setq clang-faces-delta-end nil))
-       ;; Delta Start nil - mark this as the start of delta reg
-       (setq clang-faces-delta-beg beg))))
+    (when (eq clang-faces-current-change 'insertion)
+      (setq clang-faces-dirty-current clang-faces-dirty-id)
+      (message (format
+		"Point %d Beg: %d End: %d Inserted text: %s" 
+		(point) beg end (buffer-substring-no-properties beg end)))
+
+      (set-text-properties beg end (list 'dirty clang-faces-dirty-id 'dirty-pt beg))
+      (puthash beg 'default clang-faces-dirty-pt-table)
+
+      ;; Delta Start Region already exists... check for stop char
+      (when (and (memls "(){};<>:"
+			(buffer-substring-no-properties beg end)))
+	;; Stop character found, mark end of delta region
+	(clang-faces-request-hilight)
+	(clang-faces-reset-dirty-id))
+      ;; Delta Start nil - mark this as the start of delta reg
+      ))
 
   (when (eq clang-faces-current-change 'deletion)
-    ;;(message "Deletion!")
-
-))
+    (message "Deletion!")
+;    (setq clang-faces-dirty-current clang-faces-dirty-id)
+    ))
 
 ;; (defadvice ac-handle-post-command (around inhibit-mods () activate)
 ;;   ""
@@ -439,7 +535,8 @@ region."
   ;; (if clang-faces-reparse-timer
   ;;     (cancel-timer clang-faces-reparse-timer))
   
-
+  (set-text-properties (point-min) (point-max) (list 'dirty
+						     clang-faces-dirty-id))
   (setq clang-faces-delta-beg nil)
   (setq clang-faces-delta-end nil)
   (setq clang-faces-valid-pt nil)
@@ -491,13 +588,16 @@ region."
   ;;(font-lock-mode 1)
   (setq clang-faces-current-buffer (current-buffer))
   (and (not clang-faces-fontify-timer)
-       (setq clang-faces-fontify-timer
-	     ;; (run-with-idle-timer 5 5 (function clang-faces-fontify-buffer)
-	     ;; 		     (current-buffer))
-	     (run-with-idle-timer 5 5
-				  (function clang-faces-idle-request-hilight)
-				  clang-faces-current-buffer))
-       (message "Refontify Timer Started"))
+
+       ;; (setq clang-faces-fontify-timer
+       ;; 	     ;; (run-with-idle-timer 5 5 (function clang-faces-fontify-buffer)
+       ;; 	     ;; 		     (current-buffer))
+       ;; 	     (run-with-idle-timer 5 5
+       ;; 				  (function clang-faces-idle-request-hilight)
+       ;; 				  clang-faces-current-buffer))
+
+       ;; (message "Refontify Timer Started")
+)
   ;; (setq clang-faces-reparse-timer
   ;; 	(run-with-idle-timer 5 2 (function 
   ;; 				  clang-faces-process-reparse-request)
