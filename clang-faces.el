@@ -31,6 +31,8 @@
 ;;
 ;;; Code:
 
+(require 'cl)
+
 (defvar clang-faces-exec 
   "~/code/clang-faces/build/clang-faces")
 
@@ -166,13 +168,12 @@
   (save-excursion
     (let ((beg (next-single-property-change (point) 'dirty))
 	  (end (next-single-property-change (point) 'dirty))
-	  this-id this-dirty-pt res)
+	  this-id res)
       (while (and beg end (not res))
 	(setq this-id (get-text-property beg 'dirty))
-	(setq this-dirty-pt (get-text-property beg 'dirtypt))
 	(setq end (next-single-property-change beg 'dirty))
 	(if this-id 
-	    (setq res (list this-id this-dirty-pt beg (or end (point-max))))
+	    (setq res (list this-id beg (or end (point-max))))
 	  (setq beg end)))
       res)))
 
@@ -184,8 +185,21 @@
 	      (beg (cadr reg))
 	      (end (caddr reg)))
 	  (when (= oldid thisid)
-	    (set-text-properties beg end (list 'dirty newid)))
+	    (put-text-property beg end 'dirty newid))
 	  (goto-char end))))))
+
+(defun clang-faces-get-face-by-point (pt parsed-data)
+  (let ((res nil))
+    (loop for entry in parsed-data
+	  for beg = (car entry)
+	  for end = (cadr entry)
+	  for this-res = (aget clang-faces-type-face-alist (caddr entry))
+	  ;; do (message (format "%s Comparing %d > %d >= %d" this-res end pt beg))
+	  if (and (>= pt beg) (< pt end))
+	  do (setq res this-res)
+	  until res)
+    
+    res))
 
 ;(defun clang-faces-)
 (defun clang-faces-update-table-entry (tbl dirtypt parsed-data)
@@ -226,28 +240,246 @@
 
 ;;(aget clang-faces-type-face-alist "Punctuation")
 
-(defun clang-faces-update-table (tbl)
+
+(defun clang-faces-update-table (tbl parsed-data)
   (maphash #'(lambda (key val)
-	       (clang-faces-update-table-entry tbl key clang-faces-parsed-data))))
+	       (clang-faces-update-table-entry tbl key parsed-data))
+	   tbl)
+  (maphash #'(lambda (key val)
+	       (message (format "%d => %s" key val)))
+	   tbl))
+
+;; (puthash 692 'default clang-faces-dirty-pt-table)
+;; (clang-faces-update-table 
+;;  clang-faces-dirty-pt-table
+;; '((1 2 "Punctuation")
+;;  (2 9 "Identifier")
+;;  (10 11 "Punctuation")
+;;  (11 19 "Identifier")
+;;  (19 20 "Punctuation")
+;;  (22 23 "Punctuation")
+;;  (23 30 "Identifier")
+;;  (31 32 "Punctuation")
+;;  (32 36 "Identifier")
+;;  (36 37 "Punctuation")
+;;  (37 38 "Identifier")
+;;  (38 39 "Punctuation")
+;;  (41 49 "Identifier")
+;;  (50 58 "Function")
+;;  (58 59 "Punctuation")
+;;  (60 68 "Identifier")
+;;  (69 78 "Variable")
+;;  (79 80 "Punctuation")
+;;  (81 82 "Punctuation")
+;;  (85 94 "Identifier")
+;;  (95 96 "Punctuation")
+;;  (96 100 "Variable")
+;;  (101 102 "Punctuation")
+;;  (103 104 "Punctuation")
+;;  (104 113 "Identifier")
+;;  (114 115 "Punctuation")
+;;  (115 116 "Punctuation")
+;;  (116 125 "Variable")
+;;  (125 126 "Punctuation")
+;;  (129 136 "Function")
+;;  (136 137 "Punctuation")
+;;  (138 152 "Literal")
+;;  (153 154 "Punctuation")
+;;  (154 155 "Punctuation")
+;;  (159 175 "Function")
+;;  (175 176 "Punctuation")
+;;  (177 181 "Variable")
+;;  (182 183 "Punctuation")
+;;  (183 184 "Punctuation")
+;;  (188 194 "Keyword")
+;;  (195 200 "Identifier")
+;;  (200 201 "Punctuation")
+;;  (202 203 "Punctuation")
+;;  (205 209 "Identifier")
+;;  (210 226 "Function")
+;;  (226 227 "Punctuation")
+;;  (228 240 "Identifier")
+;;  (241 242 "Punctuation")
+;;  (242 243 "Variable")
+;;  (243 244 "Punctuation")
+;;  (245 254 "Identifier")
+;;  (255 256 "Punctuation")
+;;  (256 257 "Variable")
+;;  (258 259 "Punctuation")
+;;  (260 261 "Punctuation")
+;;  (264 271 "Identifier")
+;;  (272 273 "Punctuation")
+;;  (273 274 "Variable")
+;;  (275 276 "Punctuation")
+;;  (277 297 "Function")
+;;  (297 298 "Punctuation")
+;;  (299 302 "Literal")
+;;  (303 304 "Punctuation")
+;;  (304 305 "Punctuation")
+;;  (308 329 "Function")
+;;  (329 330 "Punctuation")
+;;  (331 332 "Variable")
+;;  (332 333 "Punctuation")
+;;  (334 342 "Function")
+;;  (342 343 "Punctuation")
+;;  (344 345 "Punctuation")
+;;  (345 353 "Identifier")
+;;  (353 354 "Punctuation")
+;;  (354 355 "Variable")
+;;  (355 356 "Punctuation")
+;;  (357 361 "Function")
+;;  (362 363 "Punctuation")
+;;  (363 364 "Punctuation")
+;;  (367 382 "Function")
+;;  (382 383 "Punctuation")
+;;  (384 385 "Variable")
+;;  (385 386 "Punctuation")
+;;  (387 388 "Variable")
+;;  (389 390 "Punctuation")
+;;  (390 391 "Punctuation")
+;;  (394 408 "Function")
+;;  (408 409 "Punctuation")
+;;  (410 411 "Variable")
+;;  (412 413 "Punctuation")
+;;  (413 414 "Punctuation")
+;;  (415 416 "Punctuation")
+;;  (418 421 "Identifier")
+;;  (422 426 "Function")
+;;  (426 427 "Punctuation")
+;;  (427 430 "Identifier")
+;;  (431 435 "Variable")
+;;  (435 436 "Punctuation")
+;;  (437 441 "Identifier")
+;;  (442 443 "Punctuation")
+;;  (443 447 "Variable")
+;;  (447 448 "Punctuation")
+;;  (448 449 "Punctuation")
+;;  (449 450 "Punctuation")
+;;  (451 452 "Punctuation")
+;;  (455 467 "Identifier")
+;;  (468 469 "Punctuation")
+;;  (469 476 "Variable")
+;;  (477 478 "Punctuation")
+;;  (479 497 "Function")
+;;  (497 498 "Punctuation")
+;;  (498 499 "Punctuation")
+;;  (499 500 "Punctuation")
+;;  (503 512 "Identifier")
+;;  (513 514 "Punctuation")
+;;  (514 518 "Variable")
+;;  (519 520 "Punctuation")
+;;  (521 536 "Function")
+;;  (536 537 "Punctuation")
+;;  (538 545 "Variable")
+;;  (545 546 "Punctuation")
+;;  (547 552 "Function")
+;;  (553 554 "Punctuation")
+;;  (554 555 "Punctuation")
+;;  (559 575 "Function")
+;;  (575 576 "Punctuation")
+;;  (577 584 "Variable")
+;;  (584 585 "Punctuation")
+;;  (586 590 "Variable")
+;;  (591 592 "Punctuation")
+;;  (592 593 "Punctuation")
+;;  (597 612 "Function")
+;;  (612 613 "Punctuation")
+;;  (614 618 "Variable")
+;;  (619 620 "Punctuation")
+;;  (620 621 "Punctuation")
+;;  (624 641 "Function")
+;;  (641 642 "Punctuation")
+;;  (643 647 "Variable")
+;;  (648 649 "Punctuation")
+;;  (649 650 "Punctuation")
+;;  (653 668 "Function")
+;;  (668 669 "Punctuation")
+;;  (670 674 "Variable")
+;;  (675 676 "Punctuation")
+;;  (676 677 "Punctuation")
+;;  (681 696 "Identifier")
+;;  (696 697 "Punctuation")
+;;  (700 704 "Identifier")
+;;  (705 706 "Punctuation")
+;;  (707 722 "Identifier")
+;;  (722 723 "Punctuation")
+;;  (724 731 "Identifier")
+;;  (731 732 "Punctuation")
+;;  (733 738 "Identifier")
+;;  (739 740 "Punctuation")
+;;  (740 741 "Punctuation")
+;;  (745 761 "Function")
+;;  (761 762 "Punctuation")
+;;  (763 770 "Variable")
+;;  (770 771 "Punctuation")
+;;  (772 776 "Variable")
+;;  (777 778 "Punctuation")
+;;  (778 779 "Punctuation")
+;;  (782 797 "Function")
+;;  (797 798 "Punctuation")
+;;  (799 803 "Variable")
+;;  (804 805 "Punctuation")
+;;  (805 806 "Punctuation")
+;;  (809 826 "Function")
+;;  (826 827 "Punctuation")
+;;  (828 832 "Variable")
+;;  (833 834 "Punctuation")
+;;  (834 835 "Punctuation")
+;;  (839 859 "Function")
+;;  (859 860 "Punctuation")
+;;  (861 868 "Variable")
+;;  (869 870 "Punctuation")
+;;  (870 871 "Punctuation")
+;;  (875 881 "Keyword")
+;;  (882 883 "Literal")
+;;  (883 884 "Punctuation")
+;;  (885 886 "Punctuation")
+;;  (888 907 "Comment")
+;;  (908 1042 "Comment")
+;;  (1043 1129 "Comment")
+;;  (1130 1137 "Comment")))
 
 (defun clang-faces-update-dirty-entries-for-id (dirty-id dirty-pt-table)
+  (message (format "dirty id: %d" dirty-id))
   (save-excursion
     (goto-char (point-min))
     (let (dreg this-did this-beg this-end)
      (while (setq dreg (clang-faces-next-dirty-region))
        (setq this-did (car dreg))
-       (setq this-dpt (cadr dreg))
-       (setq this-beg (caddr dreg))
-       (setq this-end (cadddr dreg))
+       (setq this-beg (cadr dreg))
+       (setq this-end (caddr dreg))
+
 
        (while (< this-beg this-end)
 	 (goto-char this-beg)
+	 ;; TODO: loop optimization, pull when out in front of 2nd while
+	 (message (format "this-beg: %d this-end %d" this-beg this-end))
+	 (message (format "Comparing did %d this did %d" dirty-id this-did))
 	 (when (= dirty-id this-did)
-	   (set-text-properties this-beg (1+ this-beg) (list 'font-lock-face (gethash this-dpt tbl))))
+	   (message (format "dirty table: %s" dirty-pt-table))
+	   (message (format "parsed data: %s" clang-faces-parsed-data))
+	   (message (format "newface: %s" (or (gethash this-dpt dirty-pt-table)
+				(clang-faces-get-face-by-point this-dpt clang-faces-parsed-data))))
+	   (let* ((this-dpt (or (get-text-property this-beg 'dirtypt)
+			       this-beg))
+		  (this-face (or (gethash this-dpt dirty-pt-table)
+				(clang-faces-get-face-by-point this-dpt clang-faces-parsed-data))))
+	     (message (format "thisbeg %d this-dpt %d" this-beg this-dpt))
+	     (when (and (not (or (overlays-at this-beg)))
+			this-face)
+	       (message (format "Adding face: %s" (gethash this-dpt dirty-pt-table)))
+
+	       (add-text-properties this-beg
+				   (1+ this-beg)
+				   (list 'font-lock-face 
+					 this-face))
+	       (remove-text-properties this-beg (1+ this-beg)
+				     (list 'dirty 'dirty-pt)))
+	     ))
 	 (setq this-beg (1+ this-beg)))
-;; TODO: finish this amazing shit~! and make test harness!
-)))
-  )
+       ;; TODO: finish this amazing shit~! and make test harness!
+
+       ))))
 
 (defun clang-faces-on-hilight-returns (proc)
   "To be called by the process filter when it has collected all
@@ -269,7 +501,7 @@ region."
 		 ;(= clang-faces-dirty-current dirty-id)
 		 )
 	(message (format "Highlighting for dirty id: %d" dirty-id))
-	(clang-faces-update-table dirty-pt-table)
+	(clang-faces-update-table dirty-pt-table clang-faces-parsed-data)
 	(clang-faces-update-dirty-entries-for-id dirty-id dirty-pt-table)
 
 	;; ;; TODO: should we change this?!
@@ -277,8 +509,13 @@ region."
 	;;   (clang-faces-fontify-region-worker (point-min) (point-max) buf)
 	;;   ;(font-lock-fontify-region beg end)
 	;;   )
+	)
 
-))))
+      (message (format "count: %d" (hash-table-count dirty-pt-table)))
+      (when (or (null dirty-pt-table) 
+		(eq (hash-table-count dirty-pt-table) 0))
+	(message (format "Byung Sin!"))
+	(clang-faces-fontify-buffer)))))
 
 (defun clang-faces-parse-incoming-data (proc)
   (setq 
@@ -308,6 +545,7 @@ region."
 	       		(1+ (string-to-number (match-string 2)))
 	       		(match-string 3))))
 ))
+       (when (null pdata) (error "Donkey!"))
        (erase-buffer)
        pdata))))
 
@@ -424,8 +662,7 @@ region."
 (defvar-local clang-faces-dirty-pt-table (make-hash-table))
 
 (defun clang-faces-request-hilight ()
-  (let* (;(entry (list beg end))
-	 (entry (list clang-faces-dirty-id clang-faces-dirty-pt-table))
+  (let* ((entry (list clang-faces-dirty-id clang-faces-dirty-pt-table))
 	 (proc clang-faces-process))
     (setq clang-faces-hilight-request-queue
 	  (append clang-faces-hilight-request-queue
@@ -433,9 +670,25 @@ region."
     (message (format "Requesting Hilight in %s w/id %d !"
 		     (current-buffer) clang-faces-dirty-id))
     ;; reset hash table
-    (setq clang-faces-dirty-pt-table (make-hash-table))
+
+    (clang-faces-reset-dirty-id)
+    (clang-faces-reset-dirty-pt-table)
 
     (clang-faces-request-hilight-worker proc)))
+
+(defun clang-faces-reset-dirty-pt-table ()
+  (setq clang-faces-dirty-pt-table (make-hash-table)))
+
+(defun clang-faces-request-hilight-region (beg end)
+  (set-text-properties beg end
+		       (list 'dirty
+			     clang-faces-dirty-id))
+  ;; This shit is *very* expensive
+  (loop for pt from beg to (1- end)
+  	do (add-text-properties pt (1+ pt) (list 'dirty-pt pt)))
+
+  (clang-faces-reset-dirty-pt-table)
+  (clang-faces-request-hilight))
 
 (defun clang-faces-idle-request-hilight (buffer)
   (with-current-buffer buffer
@@ -451,13 +704,19 @@ region."
     (clang-faces-request-hilight)))
 
 (defun clang-faces-before-change (beg end)
-  (if (eq (- end beg) 0)
-      (setq clang-faces-current-change 'insertion)
-    (setq clang-faces-current-change 'deletion))
-  ;; (message 
-  ;;  (format "trigger: %s %d %d before: %s"
-  ;; 	   this-command
-  ;; 	   beg end (buffer-substring-no-properties beg end)))
+
+  (cond 
+   ((or (null this-command))
+    (setq clang-faces-current-change 'ignore))
+   ((eq (- end beg) 0)
+    (setq clang-faces-current-change 'insertion))
+   (t
+    (setq clang-faces-current-change 'deletion)))
+  (message 
+   (format "lastcmd: %s thiscmd: %s %d %d before: %s"
+  	   last-command
+  	   this-command
+  	   beg end (buffer-substring-no-properties beg end)))
 
 )
 
@@ -488,6 +747,12 @@ region."
 (defun clang-faces-reset-dirty-id ()
   (setq clang-faces-dirty-id (1+ clang-faces-dirty-id)))
 
+(defun clang-faces-debug-dirty-pt-table ()
+  (interactive)
+  (maphash #'(lambda (key val)
+	       (message (format "%d => %s" key val)))
+	   clang-faces-dirty-pt-table))
+
 (defun clang-faces-after-change (beg end oldlen)
   (ignore-errors
     (when (eq clang-faces-current-change 'insertion)
@@ -500,11 +765,18 @@ region."
       (puthash beg 'default clang-faces-dirty-pt-table)
 
       ;; Delta Start Region already exists... check for stop char
-      (when (and (memls "(){};<>:"
+      (when (and (memls "){};<>:"
 			(buffer-substring-no-properties beg end)))
 	;; Stop character found, mark end of delta region
-	(clang-faces-request-hilight)
-	(clang-faces-reset-dirty-id))
+	(clang-faces-request-hilight))
+
+      (when (memls ";}" (buffer-substring-no-properties beg end))
+	(clang-faces-request-hilight-region (save-excursion
+					      (c-beginning-of-statement)
+					      (point))
+					    end))
+      
+
       ;; Delta Start nil - mark this as the start of delta reg
       ))
 
@@ -535,13 +807,13 @@ region."
   ;; (if clang-faces-reparse-timer
   ;;     (cancel-timer clang-faces-reparse-timer))
   
-  (set-text-properties (point-min) (point-max) (list 'dirty
-						     clang-faces-dirty-id))
   (setq clang-faces-delta-beg nil)
   (setq clang-faces-delta-end nil)
   (setq clang-faces-valid-pt nil)
   (setq clang-faces-hilight-request-queue nil)
 
+  (setq clang-faces-dirty-id 0)
+  (setq clang-faces-dirty-pt-table (makehash))
   (setq clang-faces-point-delta 0)
   (setq clang-faces-last-point 0)
   (setq clang-faces-fontify-region-queue nil)
@@ -612,7 +884,8 @@ region."
   (setq clang-faces-delta-beg (point-min))
   (setq clang-faces-delta-end (point-max))
   (setq clang-faces-valid-pt (point-max))
-  (clang-faces-request-hilight))
+
+  (clang-faces-request-hilight-region (point-min) (point-max)))
 
 (defvar clang-faces-mode nil)
 
