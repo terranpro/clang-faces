@@ -164,6 +164,23 @@
 				     (or buf (current-buffer))))
 
 
+(defun clang-faces-this-dirty-region ()
+  (save-excursion
+    (let* ((beg (point))
+	   (end (next-single-property-change (point) 'dirty))
+	   (this-id (get-text-property beg 'dirty)))
+      (cond 
+       ((and this-id (null end))
+	(setq end (point-max))
+	(setq res (list this-id beg end)))
+
+       ((null this-id)
+	(setq res nil))
+
+       (t
+	(setq res (list this-id beg (or end (point-max))))))
+      res)))
+
 (defun clang-faces-next-dirty-region ()
   (save-excursion
     (let ((beg (next-single-property-change (point) 'dirty))
@@ -443,43 +460,50 @@
   (message (format "dirty id: %d" dirty-id))
   (save-excursion
     (goto-char (point-min))
-    (let (dreg this-did this-beg this-end)
-     (while (setq dreg (clang-faces-next-dirty-region))
-       (setq this-did (car dreg))
-       (setq this-beg (cadr dreg))
-       (setq this-end (caddr dreg))
+    (let (dreg this-did this-beg this-end cur-pt)
+      (message (format "dirty table: %s" dirty-pt-table))
+      (message (format "parsed data: %s" clang-faces-parsed-data))
 
+      (while (setq dreg (or (clang-faces-next-dirty-region)
+			    (clang-faces-this-dirty-region)))
+	(setq this-did (car dreg))
+	(setq this-beg (cadr dreg))
+	(setq this-end (caddr dreg))
+	(setq cur-pt this-beg)
 
-       (while (< this-beg this-end)
-	 (goto-char this-beg)
-	 ;; TODO: loop optimization, pull when out in front of 2nd while
-	 (message (format "this-beg: %d this-end %d" this-beg this-end))
-	 (message (format "Comparing did %d this did %d" dirty-id this-did))
-	 (when (= dirty-id this-did)
-	   (message (format "dirty table: %s" dirty-pt-table))
-	   (message (format "parsed data: %s" clang-faces-parsed-data))
-	   (message (format "newface: %s" (or (gethash this-dpt dirty-pt-table)
-				(clang-faces-get-face-by-point this-dpt clang-faces-parsed-data))))
-	   (let* ((this-dpt (or (get-text-property this-beg 'dirtypt)
-			       this-beg))
-		  (this-face (or (gethash this-dpt dirty-pt-table)
-				(clang-faces-get-face-by-point this-dpt clang-faces-parsed-data))))
-	     (message (format "thisbeg %d this-dpt %d" this-beg this-dpt))
-	     (when (and (not (or (overlays-at this-beg)))
-			this-face)
-	       (message (format "Adding face: %s" (gethash this-dpt dirty-pt-table)))
+	(while (< cur-pt this-end)
+	  (goto-char cur-pt)
+	  ;; TODO: loop optimization, pull when out in front of 2nd while
+	  (message (format "cur-pt: %d this-end %d" cur-pt this-end))
+	  (message (format "Comparing did %d this did %d" dirty-id this-did))
+	  (if (/= dirty-id this-did)
+	      (message (format "dirty-id %d this-did %d" dirty-id this-did)))
+	  (when (= dirty-id this-did)
+	    (message (format "newface: %s" (or (gethash this-dpt dirty-pt-table)
+					       (clang-faces-get-face-by-point this-dpt clang-faces-parsed-data))))
+	    (let* ((this-dpt (or (get-text-property cur-pt 'dirtypt)
+				 cur-pt))
+		   (this-face (or (gethash this-dpt dirty-pt-table)
+				  (clang-faces-get-face-by-point this-dpt clang-faces-parsed-data))))
+	      (message (format "thisbeg %d this-dpt %d" cur-pt this-dpt))
+	      (when (and (not (or (overlays-at cur-pt)))
+			 this-face)
+		(message (format "Adding face: %s" (gethash this-dpt dirty-pt-table)))
 
-	       (add-text-properties this-beg
-				   (1+ this-beg)
-				   (list 'font-lock-face 
-					 this-face))
-	       (remove-text-properties this-beg (1+ this-beg)
-				     (list 'dirty 'dirty-pt)))
-	     ))
-	 (setq this-beg (1+ this-beg)))
-       ;; TODO: finish this amazing shit~! and make test harness!
+		(add-text-properties cur-pt
+				     (1+ cur-pt)
+				     (list 'font-lock-face 
+					   this-face))
+		(remove-text-properties cur-pt (1+ cur-pt)
+					(list 'dirty 'dirty-pt)))
+	      ))
+	  (setq cur-pt (1+ cur-pt)))
 
-       ))))
+	;;(remove-text-properties this-beg this-end (list 'dirty))
+	(goto-char this-end)
+	;; TODO: finish this amazing shit~! and make test harness!
+
+	))))
 
 (defun clang-faces-on-hilight-returns (proc)
   "To be called by the process filter when it has collected all
@@ -495,27 +519,36 @@ region."
       (setq elt (pop clang-faces-hilight-request-queue))
       (message (format "dirty-id = %d dirty-current = %d"
 		       (car elt) clang-faces-dirty-current))
-      (when (and elt
-		 (setq dirty-id (car elt))
-		 (setq dirty-pt-table (cadr elt))
-		 ;(= clang-faces-dirty-current dirty-id)
-		 )
+      (cond 
+       ((and elt
+	     (setq dirty-id (car elt))
+	     (setq dirty-pt-table (cadr elt))
+	     ;; (= clang-faces-dirty-current dirty-id)
+	     )
+
+	(when (or (null dirty-pt-table) 
+		  (eq (hash-table-count dirty-pt-table) 0))
+	  (message (format "Byung Sin!"))
+	  ;; (clang-faces-fontify-buffer)
+	  (loop for pt from (point-min) to (1- (point-max))
+		if (not (string=
+			 (spaces-string 1) (buffer-substring pt (1+ pt))))
+		do (puthash pt 'default dirty-pt-table)))
 	(message (format "Highlighting for dirty id: %d" dirty-id))
 	(clang-faces-update-table dirty-pt-table clang-faces-parsed-data)
-	(clang-faces-update-dirty-entries-for-id dirty-id dirty-pt-table)
+	(clang-faces-update-dirty-entries-for-id dirty-id dirty-pt-table))
 
-	;; ;; TODO: should we change this?!
-	;; (save-excursion
-	;;   (clang-faces-fontify-region-worker (point-min) (point-max) buf)
-	;;   ;(font-lock-fontify-region beg end)
-	;;   )
-	)
+       (t
+	(message "Houston, we have a byung sin."))
 
-      (message (format "count: %d" (hash-table-count dirty-pt-table)))
-      (when (or (null dirty-pt-table) 
-		(eq (hash-table-count dirty-pt-table) 0))
-	(message (format "Byung Sin!"))
-	(clang-faces-fontify-buffer)))))
+       
+
+       ;; ;; TODO: should we change this?!
+       ;; (save-excursion
+       ;;   (clang-faces-fontify-region-worker (point-min) (point-max) buf)
+       ;;   ;(font-lock-fontify-region beg end)
+       ;;   )
+       ))))
 
 (defun clang-faces-parse-incoming-data (proc)
   (setq 
@@ -680,12 +713,14 @@ region."
   (setq clang-faces-dirty-pt-table (make-hash-table)))
 
 (defun clang-faces-request-hilight-region (beg end)
-  (set-text-properties beg end
-		       (list 'dirty
-			     clang-faces-dirty-id))
+  ;; (set-text-properties beg end
+  ;; 		       (list 'dirty
+  ;; 			     clang-faces-dirty-id))
   ;; This shit is *very* expensive
   (loop for pt from beg to (1- end)
-  	do (add-text-properties pt (1+ pt) (list 'dirty-pt pt)))
+  	do (add-text-properties 
+	    pt (1+ pt) 
+	    (list 'dirty clang-faces-dirty-id 'dirty-pt pt)))
 
   (clang-faces-reset-dirty-pt-table)
   (clang-faces-request-hilight))
