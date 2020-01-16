@@ -133,7 +133,7 @@
   (let ((type-face (or (cdr (assoc type clang-faces-type-face-alist))
 		       'default)))
     (put-text-property start end 'font-lock-face type-face buf)
-    (remove-text-properties start (1+ end) '(dirty) buf)
+    (remove-text-properties start (1+ end) (list 'dirty 'ignore) buf)
 ;    (put-text-property start end 'fontified nil buf)
     ))
 
@@ -181,7 +181,7 @@
 	(setq res (list this-id beg (or end (point-max))))))
       res)))
 
-(defun clang-faces-next-dirty-region ()
+(defun clang-faces-next-dirty-region (&optional dirty-id)
   (save-excursion
     (let ((beg (next-single-property-change (point) 'dirty))
 	  (end (next-single-property-change (point) 'dirty))
@@ -476,8 +476,7 @@
 	  ;; TODO: loop optimization, pull when out in front of 2nd while
 	  (message (format "cur-pt: %d this-end %d" cur-pt this-end))
 	  (message (format "Comparing did %d this did %d" dirty-id this-did))
-	  (if (/= dirty-id this-did)
-	      (message (format "dirty-id %d this-did %d" dirty-id this-did)))
+	  
 	  (when (= dirty-id this-did)
 	    (message (format "newface: %s" (or (gethash this-dpt dirty-pt-table)
 					       (clang-faces-get-face-by-point this-dpt clang-faces-parsed-data))))
@@ -495,11 +494,12 @@
 				     (list 'font-lock-face 
 					   this-face))
 		(remove-text-properties cur-pt (1+ cur-pt)
-					(list 'dirty 'dirty-pt)))
+					(list 'dirty 'ignore 
+					      'dirty-pt 'ignore)))
 	      ))
 	  (setq cur-pt (1+ cur-pt)))
 
-	;;(remove-text-properties this-beg this-end (list 'dirty))
+	;;(remove-text-properties this-beg this-end (list 'dirty 'ignore))
 	(goto-char this-end)
 	;; TODO: finish this amazing shit~! and make test harness!
 
@@ -531,8 +531,8 @@ region."
 	  (message (format "Byung Sin!"))
 	  ;; (clang-faces-fontify-buffer)
 	  (loop for pt from (point-min) to (1- (point-max))
-		if (not (string=
-			 (spaces-string 1) (buffer-substring pt (1+ pt))))
+		;; if (not (string=
+		;; 	 (spaces-string 1) (buffer-substring pt (1+ pt))))
 		do (puthash pt 'default dirty-pt-table)))
 	(message (format "Highlighting for dirty id: %d" dirty-id))
 	(clang-faces-update-table dirty-pt-table clang-faces-parsed-data)
@@ -748,9 +748,10 @@ region."
    (t
     (setq clang-faces-current-change 'deletion)))
   (message 
-   (format "lastcmd: %s thiscmd: %s %d %d before: %s"
+   (format "lastcmd: %s thiscmd: %s clang-current-change %s %d %d before: %s"
   	   last-command
   	   this-command
+	   clang-faces-current-change
   	   beg end (buffer-substring-no-properties beg end)))
 
 )
@@ -791,25 +792,29 @@ region."
 (defun clang-faces-after-change (beg end oldlen)
   (ignore-errors
     (when (eq clang-faces-current-change 'insertion)
-      (setq clang-faces-dirty-current clang-faces-dirty-id)
-      (message (format
-		"Point %d Beg: %d End: %d Inserted text: %s" 
-		(point) beg end (buffer-substring-no-properties beg end)))
+      (let ((ins-txt (buffer-substring-no-properties beg end)))
+	(setq clang-faces-dirty-current clang-faces-dirty-id)
+	(message (format
+		  "Point %d Beg: %d End: %d Inserted text: %s" 
+		  (point) beg end ins-txt))
 
-      (set-text-properties beg end (list 'dirty clang-faces-dirty-id 'dirty-pt beg))
-      (puthash beg 'default clang-faces-dirty-pt-table)
+	(when (not (or (string= (spaces-string (- end beg)) ins-txt)
+		       (string= "\n" ins-txt)))
+	  (add-text-properties beg end 
+			      (list 'dirty clang-faces-dirty-id 
+				    'dirty-pt beg))
+	  (puthash beg 'default clang-faces-dirty-pt-table))
 
-      ;; Delta Start Region already exists... check for stop char
-      (when (and (memls "){};<>:"
-			(buffer-substring-no-properties beg end)))
-	;; Stop character found, mark end of delta region
-	(clang-faces-request-hilight))
+	;; Delta Start Region already exists... check for stop char
+	(when (and (memls "){}<>:" ins-txt))
+	  ;; Stop character found, mark end of delta region
+	  (clang-faces-request-hilight))
 
-      (when (memls ";}" (buffer-substring-no-properties beg end))
-	(clang-faces-request-hilight-region (save-excursion
-					      (c-beginning-of-statement)
-					      (point))
-					    end))
+	(when (memls ";}" ins-txt)
+	  (clang-faces-request-hilight-region (save-excursion
+						(c-beginning-of-defun)
+						(point))
+					      end)))
       
 
       ;; Delta Start nil - mark this as the start of delta reg
@@ -817,7 +822,7 @@ region."
 
   (when (eq clang-faces-current-change 'deletion)
     (message "Deletion!")
-;    (setq clang-faces-dirty-current clang-faces-dirty-id)
+					;    (setq clang-faces-dirty-current clang-faces-dirty-id)
     ))
 
 ;; (defadvice ac-handle-post-command (around inhibit-mods () activate)

@@ -21,7 +21,7 @@
  *
  * Author: Brian Fransioli <assem@terranpro.org>
  * Created: Tue Jul 18:55:32 KST 2013
- * Last modified: Thu Oct 31 22:03:36 KST 2013
+ * Last modified: Thu Jan 17 13:05:07 KST 2019
  */
 
 #include <iostream>
@@ -342,7 +342,7 @@ struct TUnit
 	const char **orig_argv;
 
 	TUnit( CXIndex idx, std::string file )
-		: index( idx ), filename(  file )
+		: index( idx ), filename( file )
 	{ std::cout << "File: " << filename << "\n"; }
 
 	~TUnit()
